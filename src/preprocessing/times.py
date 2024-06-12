@@ -96,3 +96,19 @@ def get_covid_table(start_year: int = 2015, end_year: int = 2024):
     )
     df_dates = df_dates.merge(covid_confinement_df, how="left", on="date").fillna(0)
     return df_dates
+
+
+# Function to calculate s!ymmetrical days until or since the event
+def symmetrical_days_until_event(date, event_dates):
+    event_dates_extended = (
+        event_dates
+        + [d + timedelta(days=365) for d in event_dates]
+        + [d - timedelta(days=365) for d in event_dates]
+    )
+    closest_event = min(event_dates_extended, key=lambda x: abs((x - date).days))
+    delta = (closest_event - date).days
+    if delta > 182:
+        delta -= 365
+    elif delta < -182:
+        delta += 365
+    return delta

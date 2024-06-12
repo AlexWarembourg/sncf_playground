@@ -9,11 +9,6 @@ from copy import deepcopy
 from forecast.direct import DirectForecaster
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
-
-from src.preprocessing.polars.lags import (
-    pl_compute_lagged_features,
-    pl_compute_moving_features,
-)
 from src.analysis.metrics import display_metrics
 
 

@@ -10,7 +10,7 @@ import polars as pl
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
 
-from src.preprocessing.polars.lags import (
+from src.preprocessing.lags import (
     pl_compute_lagged_features,
     pl_compute_moving_features,
     compute_autoreg_features,
