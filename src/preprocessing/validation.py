@@ -5,8 +5,6 @@ from datetime import timedelta
 def freeze_validation_set(
     df: pl.DataFrame,
     date: str,
-    ts_uid: str,
-    target: str,
     val_size: int,
     return_train: bool = True,
 ) -> pl.DataFrame:

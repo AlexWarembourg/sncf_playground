@@ -61,9 +61,9 @@ class ScikitWrapper:
             valid_x (pd.DataFrame): _description_
             valid_y (Union[pd.DataFrame, pd.Series, np.ndarray]): _description_
         """
-        self.model = self.model.fit(
+        self.model.fit(
             X=self.is_an_array(train_x[self.features]),
-            y=self.is_an_array(train_y),
+            y=self.is_an_array(train_y).ravel(),
             sample_weight=(
                 self.is_an_array(train_x[self.weight])
                 if self.weight is not None

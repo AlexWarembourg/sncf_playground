@@ -108,7 +108,7 @@ class GBTModel:
             params=self.params,
             train_set=self.pooling(
                 x=self.is_an_array(train_x[self.features]),
-                y=self.is_an_array(train_y),
+                y=self.is_an_array(train_y).ravel(),
                 weight=(
                     self.is_an_array(train_x[self.weight])
                     if self.weight is not None
@@ -117,7 +117,7 @@ class GBTModel:
             ),
             valid_sets=self.pooling(
                 x=valid_x[self.features],
-                y=self.is_an_array(valid_y),
+                y=self.is_an_array(valid_y).ravel(),
                 weight=(
                     self.is_an_array(valid_x[self.weight])
                     if self.weight is not None

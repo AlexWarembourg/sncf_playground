@@ -37,12 +37,21 @@ def weighted_reliability(y, yhat, clip=True):
     return np.sum(y * fiab) / np.sum(y)
 
 
+def smape(A, F):
+    tmp = 2 * np.abs(F - A) / (np.abs(A) + np.abs(F))
+    len_ = np.count_nonzero(~np.isnan(tmp))
+    if len_ == 0 and np.nansum(tmp) == 0:  # Deals with a special case
+        return 100
+    return 100 / len_ * np.nansum(tmp)
+
+
 def display_metrics(y, yhat, name="default"):
     metrics = pd.DataFrame()
     metrics["fname"] = [name]
     metrics["rmse"] = rmse(y, yhat)
     metrics["bias"] = bias(y, yhat)
     metrics["mape"] = mean_absolute_percentage_error(y, yhat)
-    metrics["wfiab"] = weighted_reliability(y, yhat, clip=False)
+    metrics["wfiab"] = weighted_reliability(y, yhat, clip=True)
     metrics["mae"] = mean_absolute_error(y, yhat)
+    metrics["smape"] = smape(y, yhat)
     return metrics

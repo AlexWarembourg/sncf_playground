@@ -3,6 +3,7 @@ import polars as pl
 import pandas as pd
 from datetime import datetime, timedelta
 from sklearn.preprocessing import SplineTransformer
+import holidays
 
 
 # B-spline functions
@@ -95,7 +96,9 @@ def get_covid_table(start_year: int = 2015, end_year: int = 2024):
         .reset_index(drop=True)
     )
     df_dates = df_dates.merge(covid_confinement_df, how="left", on="date").fillna(0)
-    return df_dates
+    return pl.from_pandas(df_dates).with_columns(
+        pl.col("date").cast(pl.Date).alias("date")
+    )
 
 
 # Function to calculate s!ymmetrical days until or since the event
@@ -112,3 +115,36 @@ def symmetrical_days_until_event(date, event_dates):
     elif delta < -182:
         delta += 365
     return delta
+
+
+def get_basic_holidays(min_year: int = 2015, max_year: int = 2024):
+    df_dates = pd.DataFrame(
+        {
+            "date": pd.date_range(
+                start=datetime(min_year, 1, 1),
+                end=datetime(max_year, 12, 31),
+            )
+        }
+    )
+
+    country_holidays = holidays.France(years=np.arange(min_year, max_year))
+    holiday_list = [
+        {"date": date, "holiday": name}
+        for date, name in sorted(country_holidays.items())
+    ]
+    holiday_df = pd.DataFrame(holiday_list).assign(
+        year=lambda x: pd.to_datetime(x["date"]).dt.year
+    )
+    # Add columns for each event
+    event_names = holiday_df["holiday"].unique()
+    for event_name in event_names:
+        event_dates = holiday_df[holiday_df["holiday"] == event_name]["date"].tolist()
+        event_dates = [pd.to_datetime(x) for x in event_dates]
+        df_dates[event_name] = df_dates["date"].apply(
+            lambda x: symmetrical_days_until_event(x, event_dates)
+        )
+
+    df_dates = pl.from_pandas(df_dates).with_columns(
+        pl.col("date").cast(pl.Date).alias("date")
+    )
+    return df_dates

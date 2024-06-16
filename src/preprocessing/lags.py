@@ -1,5 +1,25 @@
 import polars as pl
 from typing import List, Union, Dict, Optional
+import numpy as np
+from statsmodels.tsa.stattools import pacf
+
+
+def get_significant_lags(train_data, date_col: str = "date", target: str = "y"):
+    series = (
+        train_data.groupby(date_col)
+        .agg(pl.col(target).sum())
+        .sort(by="date")
+        .select(pl.col(target).cast(pl.Int32))
+        .to_numpy()
+        .flatten()
+    )
+    pacf_values = pacf(series, nlags=364)
+    # Identify lags with significant PACF values
+    threshold = 1.96 / np.sqrt(len(series))
+    significant_lags = [
+        lag for lag, value in enumerate(pacf_values) if abs(value) > threshold
+    ]
+    return significant_lags
 
 
 def reference_shift_from_day(

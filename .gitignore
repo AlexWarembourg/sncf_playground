@@ -13,6 +13,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+lightning_logs/
 .eggs/
 data/
 notebook/

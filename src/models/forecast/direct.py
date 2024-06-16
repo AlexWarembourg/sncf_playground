@@ -10,11 +10,8 @@ import polars as pl
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
 
-from src.preprocessing.lags import (
-    pl_compute_lagged_features,
-    pl_compute_moving_features,
-    compute_autoreg_features,
-)
+from src.preprocessing.lags import compute_autoreg_features
+
 from src.analysis.describe import timeseries_length
 from src.analysis.metrics import display_metrics
 
@@ -234,8 +231,8 @@ class DirectForecaster:
             "threading" if x_test.select(self.ts_uid).n_unique() < 1000 else "loky"
         )
         predictions = Parallel(n_jobs=self.n_jobs, backend=conditional_back)(
-            delayed(self.single_predict)(self.models_locals, key, df)
-            for key, df in grouped_dataframe
+            delayed(self.single_predict)(self.models_locals, key, subset_data)
+            for key, subset_data in grouped_dataframe
         )
         predictions = pl.concat(list(filter(lambda x: x is not None, predictions)))
         return predictions
@@ -255,7 +252,7 @@ class DirectForecaster:
         shape = x_test[self.date_str].n_unique()
         assert (
             shape >= self.initial_trim
-        ), f"the test length must contains at least {self.initial_trim} observation to compute feature engineering"
+        ), f"the test length must contains at least {self.initial_trim} date observation to compute feature engineering"
         max_dt = x_test[self.date_str].max()
         minimal_cut = max_dt - timedelta(
             days=int(self.initial_trim + self.forecast_horizon)
