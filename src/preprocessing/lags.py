@@ -65,7 +65,6 @@ def pl_compute_moving_features(
     df = df.sort(sort_keys)
     if min(shift_list) < horizon:
         raise ValueError("We must shift at least by the length of horizon")
-
     windows_expr = []
     for win in win_list:
         for shift in shift_list:
@@ -80,6 +79,24 @@ def pl_compute_moving_features(
                 windows_expr.append(w_expr_)
     df = df.with_columns(windows_expr)
     return df
+
+
+def get_lags_features_names(
+    target_col: str,
+    ts_uid: Union[str, List[str]],
+    shift_list: List[int],
+    func_list: List[str],
+    win_list: List[int],
+):
+    fname = []
+    concat_keys = ts_uid if isinstance(ts_uid, str) else "@".join(ts_uid)
+    for win in win_list:
+        for shift in shift_list:
+            for func in func_list:
+                fname.append(
+                    f"ar_{target_col}_win{win}_shift{shift}_{func}_{concat_keys}"
+                )
+    return fname
 
 
 def compute_autoreg_features(

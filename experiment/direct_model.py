@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
         model_reg = ScikitWrapper(
             model=RandomForestRegressor(
-                max_depth=8,
+                max_depth=11,
                 n_estimators=200,
                 n_jobs=-1,
                 min_samples_split=20,

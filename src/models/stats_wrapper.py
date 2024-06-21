@@ -122,17 +122,18 @@ class StatsBaseline:
     def evaluate_on_valid(self, Y_df):
         train, valid = self.temporal_train_test_split(Y_df, date_col="ds")
         forecast_valid = self.forecast(train)
+        valid = valid.join(forecast_valid, how="left", on=["ds", "unique_id"])
         metrics = []
         for col in self.point_fcst_cols:
             metrics.append(
                 display_metrics(
-                    valid[self.target].fill_null(0).to_numpy().ravel(),
-                    forecast_valid[col].fill_null(0).to_numpy().ravel(),
+                    valid[self.target].fill_null(0).fill_nan(0).to_numpy().ravel(),
+                    valid[col].fill_null(0).fill_nan(0).to_numpy().ravel(),
                     name=str(col),
                 )
             )
         metrics = pl.from_pandas(pd.concat(metrics))
-        return forecast_valid, metrics
+        return valid, metrics
 
 
 """

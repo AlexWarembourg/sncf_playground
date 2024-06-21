@@ -16,7 +16,7 @@ def trim_timeseries(
     full_data = full_data.join(true_start, on=uid, how="left")
 
     # Filter the full dataset based on the true start dates
-    full_data = full_data.filter(pl.col(time) >= pl.col("min_dt"))
+    full_data = full_data.filter(pl.col(time) >= pl.col("min_dt")).drop("min_dt")
     return full_data
 
 
@@ -29,5 +29,7 @@ def minimum_length_uid(
         .agg(pl.col(time).n_unique().alias("ntimestep"))
         .filter(pl.col("ntimestep") >= min_length)
         .select(pl.col(uid).unique())
+        .to_series()
+        .to_list()
     )
     return quality_series

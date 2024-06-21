@@ -113,11 +113,19 @@ if __name__ == "__main__":
     ]
 
     if set_strategy == "global":
-        model_reg = TorchWrapper(
-            batch_size=16,
-            num_cols=
-            cat_cols=
+        mlp = TorchWrapper(
+            batch_size=512,
+            num_cols=scaled_num_cols,
+            cat_cols=cat_cols,
+            target=y,
+            hidden_dim=254,
         )
+
+    mlp.fit(train_set, val_set, num_epochs=100, patience=10)
+
+    val_set = val_set.with_columns(
+        pl.lit(np.expm1(mlp.predict(x_test=val_set))).alias("forecast_mlp")
+    )
 
     lags = deepcopy(significant_lags)
     win_list = [7, 28, 56]
