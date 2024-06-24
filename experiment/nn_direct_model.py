@@ -36,8 +36,11 @@ ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
 flist = features["flist"]
-exog = ["job", "ferie", "vacances"] + times_cols
 in_dt = datetime.date(2017, 1, 1)
+num_cols = []
+cat_cols = ["job", "ferie", "vacances"] + times_cols
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="global", required=True)
 
@@ -53,7 +56,7 @@ if __name__ == "__main__":
     df_dates = df_dates = get_basic_holidays()
     holidays_fe = list(filter(lambda x: date_col not in x, df_dates.columns))
     covid_fe = list(filter(lambda x: date_col not in x, covid_df.columns))
-    exog = exog + holidays_fe + covid_fe
+    num_cols = num_cols + holidays_fe + covid_fe
 
     train_data, test_data, submission = load_data(p)
 
@@ -97,12 +100,12 @@ if __name__ == "__main__":
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
-    left_term = train_data.select([date_col, ts_uid, "y"] + exog).with_columns(
-        pl.lit(1).alias("train")
-    )
-    right_term = test_data.select([date_col, ts_uid, "y"] + exog).with_columns(
-        pl.lit(0).alias("train")
-    )
+    left_term = train_data.select(
+        [date_col, ts_uid, "y"] + num_cols + cat_cols
+    ).with_columns(pl.lit(1).alias("train"))
+    right_term = test_data.select(
+        [date_col, ts_uid, "y"] + num_cols + cat_cols
+    ).with_columns(pl.lit(0).alias("train"))
     full_data = pl.concat((left_term, right_term), how="vertical_relaxed")
     del left_term, right_term
 
@@ -112,19 +115,12 @@ if __name__ == "__main__":
         x for x in significant_lags if x <= macro_horizon and x % 7 == 0
     ]
 
-    if set_strategy == "global":
-        mlp = TorchWrapper(
-            batch_size=512,
-            num_cols=scaled_num_cols,
-            cat_cols=cat_cols,
-            target=y,
-            hidden_dim=254,
-        )
-
-    mlp.fit(train_set, val_set, num_epochs=100, patience=10)
-
-    val_set = val_set.with_columns(
-        pl.lit(np.expm1(mlp.predict(x_test=val_set))).alias("forecast_mlp")
+    mlp = TorchWrapper(
+        batch_size=32,
+        num_cols=num_cols,
+        cat_cols=cat_cols,
+        target=y,
+        hidden_dim=256,
     )
 
     lags = deepcopy(significant_lags)
@@ -168,12 +164,12 @@ if __name__ == "__main__":
     }
 
     dir_forecaster = DirectForecaster(
-        model=model_reg,
+        model=mlp,
         ts_uid=ts_uid,
         forecast_range=np.arange(macro_horizon),
         target_str=y,
         date_str=date_col,
-        exogs=exog,
+        exogs=cat_cols,
         features_params=autoreg_dict,
         n_jobs=-1,
     )

@@ -39,8 +39,8 @@ ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
 times_cols = features["times_cols"]
-n_step = 700
-batch_no_serie = 54
+n_step = 1200
+batch_no_serie = 548
 win_batch_size = batch_no_serie * 5
 SEED = 777
 available_exog = ["job", "ferie", "vacances"]
@@ -58,7 +58,7 @@ if __name__ == "__main__":
         target=y,
         uid=ts_uid,
         time=date_col,
-        min_length=round(macro_horizon * 1.2),
+        min_length=round(macro_horizon * 1.4),
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(validate_series))
     n_series = train_data[ts_uid].n_unique()
@@ -85,8 +85,7 @@ if __name__ == "__main__":
                 batch_size=batch_no_serie,
                 input_size=2 * macro_horizon,
                 dropout_prob_theta=0.2,
-                n_freq_downsample=[30, 7, 1],
-                interpolation_mode="cubic",
+                n_freq_downsample=[4, 2, 1],
                 scaler_type="robust",
                 loss=MSE(),
                 hist_exog_list=exog,  # time based with past known
@@ -98,7 +97,7 @@ if __name__ == "__main__":
                 h=macro_horizon,
                 max_steps=n_step,
                 batch_size=batch_no_serie,
-                n_harmonics=7,
+                n_harmonics=12,
                 scaler_type="robust",
                 loss=MSE(),
                 windows_batch_size=win_batch_size,
@@ -114,7 +113,7 @@ if __name__ == "__main__":
                 input_size=2 * macro_horizon,
                 loss=MSE(),
                 max_steps=n_step,
-                early_stop_patience_steps=3,
+                early_stop_patience_steps=5,
                 random_seed=SEED,
             ),
             TSMixerx(
@@ -125,7 +124,7 @@ if __name__ == "__main__":
                 n_series=n_series,
                 max_steps=n_step,
                 loss=MSE(),
-                early_stop_patience_steps=3,
+                early_stop_patience_steps=5,
                 hist_exog_list=exog,  # time based with past known
                 futr_exog_list=exog,  # time based with future known
                 random_seed=SEED,
@@ -138,7 +137,7 @@ if __name__ == "__main__":
                 n_series=n_series,
                 loss=MSE(),
                 max_steps=n_step,
-                early_stop_patience_steps=3,
+                early_stop_patience_steps=5,
                 random_seed=SEED,
             ),
         ],

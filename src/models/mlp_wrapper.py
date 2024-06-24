@@ -9,21 +9,27 @@ from functools import partial
 import torch.optim as optim
 import copy
 
-from pandas import DataFrame as pd_DataFrame
-from polars import DataFrame as pl_Dataframe
+from sklearn.preprocessing import StandardScaler
+
+import polars as pl
 
 
 class MixedDataset(Dataset):
     def __init__(
         self,
-        dataset: Union[pl_Dataframe, pd_DataFrame],
+        dataset: pl.DataFrame,
         continuous_data: List[str],
         categorical_data: List[str],
         target: str,
+        is_test: bool = False,
     ):
-        self.continuous_data = dataset[continuous_data].to_numpy()
         self.categorical_data = dataset[categorical_data].to_numpy()
-        self.targets = dataset[target].to_numpy().ravel()
+        self.continuous_data = dataset[continuous_data].to_numpy()
+        if not is_test:
+            self.targets = dataset[target].to_numpy().ravel()
+        else:
+            # placeholder y doest not exist in future
+            self.targets = np.ones(dataset.shape[0])
 
     def __len__(self):
         return len(self.targets)
@@ -41,9 +47,10 @@ class MixedDataset(Dataset):
 class EmbedMLP(nn.Module):
     def __init__(
         self,
-        num_features: List[str],
-        embedding_sizes: List[str],
+        num_features,
+        embedding_sizes,
         hidden_dim=64,
+        dropout_level: float = 0.25,
         output_dim=1,
     ):
         super(EmbedMLP, self).__init__()
@@ -53,19 +60,23 @@ class EmbedMLP(nn.Module):
         )
         embedding_dim = sum(e.embedding_dim for e in self.embeddings)
         input_dim = num_features + embedding_dim
+        self.dropout = nn.Dropout(dropout_level)
         self.fc1 = nn.Linear(input_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim // 2)
         self.fc3 = nn.Linear(hidden_dim // 2, output_dim)
 
-    def forward(self, x, categorical_features: List[str]):
+    def forward(self, x, categorical_features):
         embedded = [
             embedding(categorical_features[:, i])
             for i, embedding in enumerate(self.embeddings)
         ]
         embedded = torch.cat(embedded, dim=1)
         x = torch.cat([x, embedded], dim=1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.fc2(x)
+        x = F.relu(x)
         x = self.fc3(x)
         return torch.squeeze(x) if self.output_dim == 1 else x
 
@@ -77,7 +88,7 @@ class TorchWrapper:
         batch_size: int,
         hidden_dim: int,
         num_cols: List[str],
-        cat_cols: List[int],
+        cat_cols: List[str],
         target: str,
     ):
         self.batch_size = batch_size
@@ -85,31 +96,40 @@ class TorchWrapper:
         self.target = target
         self.cat_cols = cat_cols
         self.num_cols = num_cols
+        self.features = self.cat_cols + self.num_cols
         self.unique_modalities = None
         self.num_lags = len(num_cols)
         self.num_categorical_features = len(cat_cols)
         self.criterion = nn.MSELoss()
 
     def make_loader(
-        self, data: pl_Dataframe, shuffle: bool = True, batch_size: int = None
+        self,
+        data: pl.DataFrame,
+        shuffle: bool = True,
+        batch_size: int = None,
+        is_test: bool = False,
     ):
         if batch_size is not None:
             loader_batch_size = batch_size
         else:
             loader_batch_size = self.batch_size
+        # calling custom struct
         data = MixedDataset(
             data,
             continuous_data=self.num_cols,
             categorical_data=self.cat_cols,
             target=self.target,
+            is_test=is_test,
         )
         data_loader = DataLoader(data, batch_size=loader_batch_size, shuffle=shuffle)
         return data_loader
 
-    def prepare(self, train_set: pl_Dataframe, val_set: pl_Dataframe):
+    def prepare(self, train_set: pl.DataFrame, val_set: pl.DataFrame):
 
         self.unique_modalities = {
-            col: len(set(list(train_set[col]) + list(val_set[col])))
+            col: len(
+                set(np.concatenate((train_set[col].unique(), val_set[col].unique())))
+            )
             for col in self.cat_cols
         }
         print(f"Unique modalities: {self.unique_modalities}")  # Debug print
@@ -133,15 +153,19 @@ class TorchWrapper:
 
     def fit(
         self,
-        train_x: Union[pl_Dataframe, pd_DataFrame],
-        valid_x: Union[pd_DataFrame, pl_Dataframe],
+        train_x: pl.DataFrame,
+        valid_x: pl.DataFrame,
         num_epochs: int = 100,
         patience: int = 10,
+        learning_rate: float = 0.001,
+        decay: float = 0.2,
         train_y: Optional[Any] = None,  # this is a placeholder don't meant to be used
         valid_y: Optional[Any] = None,  # this is a placeholder don't meant to be used
     ):
         train_loader, val_loader = self.prepare(train_x, valid_x)
-        optimizer = optim.Adam(self.model.parameters(), lr=0.001)
+        optimizer = optim.Adam(
+            self.model.parameters(), lr=learning_rate, weight_decay=decay
+        )
         best_model_wts = copy.deepcopy(self.model.state_dict())
         best_loss = float("inf")
         patience_counter = 0
@@ -192,8 +216,10 @@ class TorchWrapper:
         self.model.load_state_dict(best_model_wts)
         return self.model
 
-    def predict(self, x_test: Union[pl_Dataframe, pd_DataFrame]) -> List[float]:
-        forecast_loader = self.make_loader(data=x_test, shuffle=False, batch_size=1)
+    def predict(self, x_test: pl.DataFrame):
+        forecast_loader = self.make_loader(
+            data=x_test, shuffle=False, batch_size=1, is_test=True
+        )
         self.model.eval()
         predictions = []
         with torch.no_grad():

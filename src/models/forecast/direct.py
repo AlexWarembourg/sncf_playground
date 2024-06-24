@@ -121,10 +121,6 @@ class DirectForecaster:
         self.uids = data[[self.ts_uid]].unique()
         # this is the maximal date available let's it's 100
         self.set_date_scope(data[self.date_str].cast(pl.Date))
-        # if we need to predict
-        if self.scaler is not None:
-            self.scaler.fit(data)
-            data = self.scaler.transform(data)
         # compute features engineering and split.
         train, valid = (
             data
@@ -139,6 +135,10 @@ class DirectForecaster:
             .pipe(self.temporal_train_test_split)
         )
         self.ar_features = list(filter(lambda x: x.startswith("ar_"), train.columns))
+        # if we need to predict
+        if self.scaler is not None:
+            self.scaler.fit(data)
+            data = self.scaler.transform(data)
         self.features = self.exogs + self.ar_features
         self.model.features = self.features
         return train, valid
@@ -196,6 +196,7 @@ class DirectForecaster:
     def predict_global(
         self, x_test: Union[polars_dataframe, pandas_dataframe] = None
     ) -> np.ndarray:
+
         y_hat = self.model.predict(x_test)
         x_test = x_test.with_columns(pl.lit(y_hat).alias(self.output_name))
         if self.scaler is not None:
