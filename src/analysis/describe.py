@@ -6,6 +6,10 @@ import polars as pl
 def describe_timeseries(
     train_data, test_data, unique_id, time, dataset_name, time_granularity
 ):
+    if isinstance(train_data, pl.DataFrame):
+        train_data = train_data.to_pandas()
+    if isinstance(test_data, pl.DataFrame):
+        test_data = test_data.to_pandas()
     n_uid = train_data[unique_id].nunique()
     train_data["shiftedtime"] = (
         train_data.sort_values(by=[unique_id, time])

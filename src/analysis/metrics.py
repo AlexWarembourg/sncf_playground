@@ -16,7 +16,8 @@ def bias(y, yhat):
     return np.sum(et) / len(et)
 
 
-def forecast_congruence(forecast_error):
+def forecast_congruence(y, yhat):
+    forecast_error = np.transpose(y - yhat)
     x = np.var(forecast_error, axis=0, ddof=1)
     x = np.mean(x)
     return np.sqrt(x)
@@ -50,7 +51,8 @@ def display_metrics(y, yhat, name="default"):
     metrics["fname"] = [name]
     metrics["rmse"] = rmse(y, yhat)
     metrics["bias"] = bias(y, yhat)
-    metrics["mape"] = mean_absolute_percentage_error(y, yhat)
+    metrics["forecast_congruence"] = forecast_congruence(y, yhat)
+    # metrics["mape"] = mean_absolute_percentage_error(y, yhat)
     metrics["wfiab"] = weighted_reliability(y, yhat, clip=True)
     metrics["mae"] = mean_absolute_error(y, yhat)
     metrics["smape"] = smape(y, yhat)
