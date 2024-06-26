@@ -10,6 +10,7 @@ import toml
 import sys
 import argparse
 from copy import deepcopy
+from datetime import timedelta
 
 
 sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
@@ -93,7 +94,7 @@ if __name__ == "__main__":
     )
 
     good_ts = minimum_length_uid(
-        train_data, target=y, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
+        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
@@ -183,6 +184,17 @@ if __name__ == "__main__":
         },
     }
 
+    median_aggregate = (
+        train_data.filter(
+            pl.col(date_col) >= pl.col(date_col).max() - timedelta(days=364 * 3)
+        )
+        .group_by(ts_uid)
+        .agg(overall_median=pl.col(y).median())
+    )
+
+    train_data = train_data.join(median_aggregate, how="left", on=[ts_uid])
+    test_data = test_data.join(median_aggregate, how="left", on=[ts_uid])
+
     dir_forecaster = DirectForecaster(
         model=model_reg,
         ts_uid=ts_uid,
@@ -194,11 +206,16 @@ if __name__ == "__main__":
         n_jobs=-1,
     )
     # fit model through the wrapper
-    dir_forecaster.fit(train_data=train_data, strategy=set_strategy)
+    dir_forecaster.fit(
+        train_data=train_data.with_columns(
+            (pl.col(y) - pl.col("overall_median")).alias(y)
+        ),
+        strategy=set_strategy,
+    )
     display(dir_forecaster.evaluate())
     # and forecast test.
     (
-        test_data.select(["index", date_col, ts_uid])
+        test_data.select(["index", date_col, ts_uid, "overall_median"])
         .join(
             (
                 dir_forecaster.predict(full_data)
@@ -209,7 +226,8 @@ if __name__ == "__main__":
             on=[date_col, ts_uid],
         )
         .fill_null(0)
-        .select(["index", "y_hat"])
+        .select(["index", "y_hat", "overall_median"])
+        .with_columns((pl.col("y_hat") + pl.col("overall_median")).alias("y_hat"))
         .rename({"y_hat": "y"})
     ).write_csv(f"out/submit/{set_strategy}_direct_lgb.csv")
 
@@ -219,11 +237,16 @@ if __name__ == "__main__":
             pl.lit(dir_forecaster.model.predict(dir_forecaster.valid)).alias(
                 f"{set_strategy}_direct_y_hat"
             )
+        ).with_columns(
+            (pl.col(f"{set_strategy}_direct_y_hat") + pl.col("overall_median")).alias(
+                f"{set_strategy}_direct_y_hat"
+            )
         )
     else:
         valid_out = (
             dir_forecaster.predict_local(dir_forecaster.valid)
-            .select([ts_uid, date_col, "y_hat"])
+            .select([ts_uid, date_col, "y_hat", "overall_median"])
+            .with_columns(y_hat=pl.col("y_hat") + pl.col("overall_median"))
             .rename({"y_hat": f"{set_strategy}_direct_y_hat"})
         )
 

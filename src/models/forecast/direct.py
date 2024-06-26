@@ -119,7 +119,7 @@ class DirectForecaster:
         self, data: polars_dataframe
     ) -> Tuple[polars_dataframe, polars_dataframe]:
         self.uids = data[[self.ts_uid]].unique()
-        # this is the maximal date available let's it's 100
+        # this is the maximal date available.
         self.set_date_scope(data[self.date_str].cast(pl.Date))
         # compute features engineering and split.
         train, valid = (
@@ -140,6 +140,9 @@ class DirectForecaster:
             self.scaler.fit(data)
             data = self.scaler.transform(data)
         self.features = self.exogs + self.ar_features
+        # special cas for scaling
+        if hasattr(self.model, "num_cols"):
+            self.model.num_cols = list(set(self.model.num_cols + self.ar_features))
         self.model.features = self.features
         return train, valid
 
@@ -156,10 +159,10 @@ class DirectForecaster:
         self.models_locals = {}
         results = Parallel(n_jobs=self.n_jobs)(
             delayed(deepcopy(self.model).fit)(
-                tr,
-                tr.select(self.target_str),
-                val,
-                val.select(self.target_str),
+                train_x=tr,
+                train_y=tr.select(self.target_str),
+                valid_x=val,
+                valid_y=val.select(self.target_str),
                 return_object=True,
             )
             for (_, tr), (_, val) in tqdm(
@@ -177,10 +180,10 @@ class DirectForecaster:
         # call model and fit with a validation set
         # model must have a quadruple fit method with an early stopping setting on the validation set.
         self.model.fit(
-            self.train,
-            self.train.select(self.target_str),
-            self.valid,
-            self.valid.select(self.target_str),
+            train_x=self.train,
+            train_y=self.train.select(self.target_str),
+            valid_x=self.valid,
+            valid_y=self.valid.select(self.target_str),
         )
 
     def fit(self, train_data: polars_dataframe, strategy: str = "global"):

@@ -91,7 +91,7 @@ if __name__ == "__main__":
     )
 
     good_ts = minimum_length_uid(
-        train_data, target=y, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
+        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.

@@ -2,7 +2,7 @@
 FROM python:3.11
 
 # Définir le répertoire de travail
-WORKDIR /app
+WORKDIR /SNCF_PLAYGROUND
 
 # Copier les fichiers requirements.txt dans le répertoire de travail
 COPY requirements.txt .

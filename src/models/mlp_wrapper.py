@@ -90,6 +90,7 @@ class TorchWrapper:
         num_cols: List[str],
         cat_cols: List[str],
         target: str,
+        scaler: callable = None,
     ):
         self.batch_size = batch_size
         self.hidden_dim = hidden_dim
@@ -98,9 +99,20 @@ class TorchWrapper:
         self.num_cols = num_cols
         self.features = self.cat_cols + self.num_cols
         self.unique_modalities = None
-        self.num_lags = len(num_cols)
+        self.num_lags = len(self.num_cols)
         self.num_categorical_features = len(cat_cols)
         self.criterion = nn.MSELoss()
+        self.scaler = scaler
+        self.scaler_is_fitted = False
+
+    @property
+    def num_cols(self):
+        return self._num_cols
+
+    @num_cols.setter
+    def num_cols(self, value):
+        self._num_cols = value
+        self.num_lags = len(self._num_cols)
 
     def make_loader(
         self,
@@ -124,6 +136,30 @@ class TorchWrapper:
         data_loader = DataLoader(data, batch_size=loader_batch_size, shuffle=shuffle)
         return data_loader
 
+    def scale_numerical(
+        self, data: pl.DataFrame, is_train: bool = True, default_value: float = 0.0
+    ) -> pl.DataFrame:
+        if is_train:
+            scaled_values = self.scaler.fit_transform(
+                data.select(self.num_cols)
+                .fill_null(default_value)
+                .fill_nan(default_value)
+            )
+            self.scaler_is_fitted = True
+        else:
+            if self.scaler_is_fitted:
+                scaled_values = self.scaler.transform(
+                    data.select(self.num_cols)
+                    .fill_null(default_value)
+                    .fill_nan(default_value)
+                )
+            else:
+                raise ValueError("Scaler is not fitted.")
+        # apply the transformation
+        for column in self.num_cols:
+            data = data.with_columns(pl.Series(column, scaled_values[column]))
+        return data
+
     def prepare(self, train_set: pl.DataFrame, val_set: pl.DataFrame):
 
         self.unique_modalities = {
@@ -133,7 +169,10 @@ class TorchWrapper:
             for col in self.cat_cols
         }
         print(f"Unique modalities: {self.unique_modalities}")  # Debug print
-
+        if self.scaler:
+            train_set = self.scale_numerical(train_set, is_train=True)
+            val_set = self.scale_numerical(val_set, is_train=False)
+        # data loader.
         train_loader = self.make_loader(data=train_set, shuffle=True)
         val_loader = self.make_loader(data=val_set, shuffle=False)
 
@@ -157,12 +196,12 @@ class TorchWrapper:
         valid_x: pl.DataFrame,
         num_epochs: int = 100,
         patience: int = 10,
-        learning_rate: float = 0.001,
+        learning_rate: float = 0.0007,
         decay: float = 0.2,
         train_y: Optional[Any] = None,  # this is a placeholder don't meant to be used
         valid_y: Optional[Any] = None,  # this is a placeholder don't meant to be used
     ):
-        train_loader, val_loader = self.prepare(train_x, valid_x)
+        train_loader, val_loader = self.prepare(train_set=train_x, val_set=valid_x)
         optimizer = optim.Adam(
             self.model.parameters(), lr=learning_rate, weight_decay=decay
         )
@@ -217,6 +256,9 @@ class TorchWrapper:
         return self.model
 
     def predict(self, x_test: pl.DataFrame):
+        if self.scaler:
+            x_test = self.scale_numerical(data=x_test, is_train=False)
+        # wrap loader then precict.
         forecast_loader = self.make_loader(
             data=x_test, shuffle=False, batch_size=1, is_test=True
         )
@@ -228,4 +270,4 @@ class TorchWrapper:
                 categorical_features = batch["categorical_features"]
                 outputs = self.model(x, categorical_features)
                 predictions.append(outputs.item())
-        return predictions
+        return np.array(predictions).ravel()

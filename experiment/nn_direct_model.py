@@ -5,6 +5,7 @@ from pathlib import Path
 from IPython.display import display
 import polars as pl
 import datetime
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 import json
 import toml
 import sys
@@ -38,7 +39,7 @@ y = features["y"]
 flist = features["flist"]
 in_dt = datetime.date(2017, 1, 1)
 num_cols = []
-cat_cols = ["job", "ferie", "vacances"] + times_cols
+cat_cols = ["week", "month", "day_of_week", "job", "ferie", "vacances"]
 
 
 parser = argparse.ArgumentParser()
@@ -96,7 +97,7 @@ if __name__ == "__main__":
     )
 
     good_ts = minimum_length_uid(
-        train_data, target=y, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
+        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
@@ -112,55 +113,28 @@ if __name__ == "__main__":
     # define params
     significant_lags = get_significant_lags(train_data, date_col=date_col, target=y)
     significant_lags = [
-        x for x in significant_lags if x <= macro_horizon and x % 7 == 0
-    ]
+        x for x in significant_lags if x % 7 == 0 and x <= macro_horizon
+    ][1:]
+    sc = RobustScaler().set_output(transform="polars")
 
     mlp = TorchWrapper(
-        batch_size=32,
+        batch_size=36,
         num_cols=num_cols,
         cat_cols=cat_cols,
         target=y,
-        hidden_dim=256,
+        hidden_dim=300,
+        scaler=sc,
     )
-
-    lags = deepcopy(significant_lags)
-    win_list = [7, 28, 56]
 
     autoreg_dict = {
         ts_uid: {
             "groups": ts_uid,
             "horizon": lambda horizon: np.int32(horizon),
-            "wins": np.array(win_list),
-            "shifts": lambda horizon: np.int32([horizon, horizon + 28]),
+            "wins": np.array([28, 56]),
+            "shifts": lambda horizon: np.int32([horizon]),
             "lags": lambda horizon: np.array(significant_lags) + horizon,
             "funcs": np.array(flist),
-        },
-        "ts_uid_dow": {
-            "groups": [ts_uid, "day_of_week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                    np.ceil(horizon / 7) + round((macro_horizon / 4)),
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-        },
-        "ts_uid_week": {
-            "groups": [ts_uid, "week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                    np.ceil(horizon / 7) + round((macro_horizon / 4)),
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-        },
+        }
     }
 
     dir_forecaster = DirectForecaster(
@@ -174,24 +148,37 @@ if __name__ == "__main__":
         n_jobs=-1,
     )
     # fit model through the wrapper
-    dir_forecaster.fit(train_data=train_data, strategy=set_strategy)
-    display(dir_forecaster.evaluate())
+    train_data = train_data.with_columns(pl.col(y).log1p().alias(y)).fill_null(0)
+    # print(train_data.columns)
+    dir_forecaster.fit(
+        # swap to log1p for DNN fitting to squeeze variance to the maximum
+        train_data=train_data,
+        strategy=set_strategy,
+    )
+    # print(dir_forecaster.valid.shape)
+    # display(dir_forecaster.evaluate())
     # and forecast test.
+    predicted = (
+        dir_forecaster.predict(full_data)
+        .filter(pl.col("train") == 0)
+        .select([date_col, ts_uid, "y_hat"])
+    )
+    display(predicted.head())
+    predicted = predicted.with_columns(
+        pl.lit(np.expm1(predicted["y_hat"].to_numpy())).alias("y_hat")
+    )
+
     (
         test_data.select(["index", date_col, ts_uid])
         .join(
-            (
-                dir_forecaster.predict(full_data)
-                .filter(pl.col("train") == 0)
-                .select([date_col, ts_uid, "y_hat"])
-            ),
+            predicted,
             how="left",
             on=[date_col, ts_uid],
         )
         .fill_null(0)
         .select(["index", "y_hat"])
         .rename({"y_hat": "y"})
-    ).write_csv(f"out/submit/{set_strategy}_direct_lgb.csv")
+    ).write_csv(f"out/submit/{set_strategy}_direct_mlp.csv")
 
     # write valid for evaluation purpose.
     if set_strategy == "global":
@@ -207,4 +194,4 @@ if __name__ == "__main__":
             .rename({"y_hat": f"{set_strategy}_direct_y_hat"})
         )
 
-    valid_out.write_csv(f"out/{set_strategy}_direct_lgb.csv")
+    valid_out.write_csv(f"out/{set_strategy}_direct_mlp.csv")

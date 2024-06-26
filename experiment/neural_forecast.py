@@ -55,8 +55,7 @@ if __name__ == "__main__":
     # some series may be to short to "validate" so we'll cut throw them for evaluation part
     validate_series = minimum_length_uid(
         train_data,
-        target=y,
-        uid=ts_uid,
+s        uid=ts_uid,
         time=date_col,
         min_length=round(macro_horizon * 1.4),
     )

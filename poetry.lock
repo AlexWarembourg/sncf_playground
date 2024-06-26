@@ -1101,6 +1101,45 @@ xlsx2csv = ["xlsx2csv (>=0.8.0)"]
 xlsxwriter = ["xlsxwriter"]
 
 [[package]]
+name = "polars-u64-idx"
+version = "0.20.31"
+description = "Blazingly fast DataFrame library"
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "polars_u64_idx-0.20.31-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:0ddbde694b6d834ecf7633be9a29fe7aa65a9da11a308716808aed682c0e43ba"},
+    {file = "polars_u64_idx-0.20.31-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:c36b3ead66a39d7d5db1e77af2d3233db01d773d63590a6b39f6a18723741a07"},
+    {file = "polars_u64_idx-0.20.31-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e4cccc25dd45384d60d4d27870d364a423970ee8350353b9985c0228b83f2cd2"},
+    {file = "polars_u64_idx-0.20.31-cp38-abi3-manylinux_2_24_aarch64.whl", hash = "sha256:113a8c0b8dc96c2ab49dff79eef2b990877fa00d8d64046a332911197009de2a"},
+    {file = "polars_u64_idx-0.20.31-cp38-abi3-win_amd64.whl", hash = "sha256:f3adb339a14952f162d4ce07be002028c17ca7130367b861eee13aade9315268"},
+    {file = "polars_u64_idx-0.20.31.tar.gz", hash = "sha256:139794161c5f54ee8fabc6e4e0ee4f5ec4dad4f783000b0015f0b0b9c0b26879"},
+]
+
+[package.extras]
+adbc = ["adbc-driver-manager", "adbc-driver-sqlite"]
+all = ["polars[adbc,async,cloudpickle,connectorx,deltalake,fastexcel,fsspec,gevent,iceberg,numpy,pandas,plot,pyarrow,pydantic,sqlalchemy,timezone,xlsx2csv,xlsxwriter]"]
+async = ["nest-asyncio"]
+cloudpickle = ["cloudpickle"]
+connectorx = ["connectorx (>=0.3.2)"]
+deltalake = ["deltalake (>=0.15.0)"]
+fastexcel = ["fastexcel (>=0.9)"]
+fsspec = ["fsspec"]
+gevent = ["gevent"]
+iceberg = ["pyiceberg (>=0.5.0)"]
+matplotlib = ["matplotlib"]
+numpy = ["numpy (>=1.16.0)"]
+openpyxl = ["openpyxl (>=3.0.0)"]
+pandas = ["pandas", "pyarrow (>=7.0.0)"]
+plot = ["hvplot (>=0.9.1)"]
+pyarrow = ["pyarrow (>=7.0.0)"]
+pydantic = ["pydantic"]
+pyxlsb = ["pyxlsb (>=1.0)"]
+sqlalchemy = ["pandas", "sqlalchemy"]
+timezone = ["backports-zoneinfo", "tzdata"]
+xlsx2csv = ["xlsx2csv (>=0.8.0)"]
+xlsxwriter = ["xlsxwriter"]
+
+[[package]]
 name = "prompt-toolkit"
 version = "3.0.47"
 description = "Library for building powerful interactive command lines in Python"
@@ -1802,4 +1841,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "32759e3328c645f0f32a317ed06a4cff7fb7d2bba80c47f8b8db55d09a29c529"
+content-hash = "6d4ed2accbfe1d8101bf174f045ca9a6099c3dac5fdc94ee2da9c30b38a0b819"
