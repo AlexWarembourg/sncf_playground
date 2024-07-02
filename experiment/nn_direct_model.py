@@ -146,6 +146,7 @@ if __name__ == "__main__":
         exogs=cat_cols,
         features_params=autoreg_dict,
         n_jobs=-1,
+        transform_strategy="mean",
     )
     # fit model through the wrapper
     train_data = train_data.with_columns(pl.col(y).log1p().alias(y)).fill_null(0)
@@ -156,14 +157,14 @@ if __name__ == "__main__":
         strategy=set_strategy,
     )
     # print(dir_forecaster.valid.shape)
-    # display(dir_forecaster.evaluate())
+    display(dir_forecaster.evaluate())
     # and forecast test.
     predicted = (
         dir_forecaster.predict(full_data)
         .filter(pl.col("train") == 0)
         .select([date_col, ts_uid, "y_hat"])
     )
-    display(predicted.head())
+    # display(predicted.head())
     predicted = predicted.with_columns(
         pl.lit(np.expm1(predicted["y_hat"].to_numpy())).alias("y_hat")
     )

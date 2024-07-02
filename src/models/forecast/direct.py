@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Tuple, Dict
+from typing import List, Optional, Union, Tuple, Dict, Callable
 import numpy as np
 from datetime import timedelta
 from IPython.display import display
@@ -11,7 +11,7 @@ from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
 
 from src.preprocessing.lags import compute_autoreg_features
-
+from src.preprocessing.target_transform import TargetTransform
 from src.analysis.describe import timeseries_length
 from src.analysis.metrics import display_metrics
 
@@ -30,6 +30,8 @@ class DirectForecaster:
         date_str: str = "date",
         scaler: str = None,
         n_jobs: int = -1,
+        transform_win_size: Optional[int] = 30,
+        transform_strategy: Optional[str] = "None",
     ):
         self.model = model
         self.ts_uid = ts_uid
@@ -54,6 +56,15 @@ class DirectForecaster:
         )
         self.strategy = None
         self.except_list = []
+
+        self.target_transformer = TargetTransform(
+            ts_uid=self.ts_uid,
+            time_col=self.date_str,
+            target=self.target_str,
+            forecast_horizon=self.forecast_horizon,
+            win_size=transform_win_size,
+            strategy=transform_strategy,
+        )
 
         if scaler is not None:
             assert scaler.name in [
@@ -123,7 +134,7 @@ class DirectForecaster:
         self.set_date_scope(data[self.date_str].cast(pl.Date))
         # compute features engineering and split.
         train, valid = (
-            data
+            data.pipe(self.target_transformer.transform)
             # .pipe(self.compute_autoregressive_features)
             .pipe(
                 compute_autoreg_features,
@@ -140,7 +151,7 @@ class DirectForecaster:
             self.scaler.fit(data)
             data = self.scaler.transform(data)
         self.features = self.exogs + self.ar_features
-        # special cas for scaling
+        # special case for scaling
         if hasattr(self.model, "num_cols"):
             self.model.num_cols = list(set(self.model.num_cols + self.ar_features))
         self.model.features = self.features
@@ -274,11 +285,15 @@ class DirectForecaster:
             )
         )
         if self.strategy == "global":
-            return self.predict_global(x_test=x_test)
+            output = self.predict_global(x_test=x_test)
         elif self.strategy == "local":
-            return self.predict_local(x_test=x_test)
+            output = self.predict_local(x_test=x_test)
         else:
             raise ValueError("Unknown Strategy")
+        output = self.target_transformer.inverse_transform(
+            output, target=self.output_name
+        )
+        return output
 
     def make_future_dataframe(self, uids: List[str] = None):
         df_dates = pl.date_range(
@@ -286,6 +301,7 @@ class DirectForecaster:
             end=self.end_forecast,
             eager=True,
         ).to_frame("date")
+        # define future_df
         future_df = df_dates.join(
             (
                 self.uids
@@ -298,23 +314,48 @@ class DirectForecaster:
 
     def evaluate(self):
         if self.fitted:
-            y_real = self.valid[self.target_str].to_numpy()
             if self.strategy == "global":
+                hat = self.predict_global(x_test=self.valid)
                 y_hat = (
-                    self.predict_global(x_test=self.valid)
+                    self.target_transformer.inverse_transform(
+                        hat, target=self.output_name
+                    )
                     .select(self.output_name)
                     .to_numpy()
                     .flatten()
                 )
+                y_real = (
+                    self.target_transformer.inverse_transform(
+                        hat, target=self.target_str
+                    )
+                    .select(self.target_str)
+                    .to_numpy()
+                    .flatten()
+                )
             elif self.strategy == "local":
+                hat = self.predict_local(x_test=self.valid)
+                hat = self.target_transformer.inverse_transform(
+                    hat, target=self.output_name
+                )
                 y_hat = (
-                    self.predict_local(x_test=self.valid)
+                    self.target_transformer.inverse_transform(
+                        hat, target=self.output_name
+                    )
                     .select(self.output_name)
+                    .to_numpy()
+                    .flatten()
+                )
+                y_real = (
+                    self.target_transformer.inverse_transform(
+                        hat, target=self.target_str
+                    )
+                    .select(self.target_str)
                     .to_numpy()
                     .flatten()
                 )
             else:
                 raise ValueError("Unknown Strategy")
+            # display(y_real, y_hat, hat.select([self.output_name, self.target_str]))
             metrics_valid = display_metrics(y_real, y_hat)
             return metrics_valid
         else:

@@ -10,7 +10,7 @@ def find_ts_outlier(
     y: str = "y",
     date_col: str = "date",
     deviation_strategy: str = "normal",
-    n_sigma: int = 3,
+    n_sigma: float = 3.24,
     window_size: int = 90,
 ) -> pl.DataFrame:
     strategy = {
@@ -38,7 +38,11 @@ def find_ts_outlier(
             (pl.col("scaled_mad") * n_sigma).alias("upper_bound"),
         )
         .with_columns(
-            (pl.col(y).is_between(pl.col("lower_bound"), pl.col("upper_bound")))
+            (
+                (pl.col(y) - pl.col("rolling_median")).is_between(
+                    pl.col("lower_bound"), pl.col("upper_bound")
+                )
+            )
             .cast(pl.Int32)
             .alias("not_outlier")
         )

@@ -3,6 +3,7 @@ import polars as pl
 import numpy as np
 
 from datetime import timedelta
+from src.preprocessing.quality import find_ts_outlier
 
 
 def forecast_to_submit(
@@ -61,6 +62,9 @@ def load_data(p):
         )
         .join(pl.read_csv(p / "y_train_sncf.csv"), on="index", how="inner")
         .with_columns(pl.col("y").alias("y_copy"))
+        .pipe(find_ts_outlier, ts_uid="station", y="y", date_col="date")
+        # .filter(pl.col("not_outlier") == 1)
+        # .drop("not_outlier")
     )
 
     test_data = test_data.with_columns(

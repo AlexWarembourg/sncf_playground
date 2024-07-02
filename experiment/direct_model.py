@@ -116,7 +116,7 @@ if __name__ == "__main__":
     if set_strategy == "global":
         model_reg = GBTModel(
             params=params_q,
-            early_stopping_value=150,
+            early_stopping_value=200,
             features=None,
             custom_loss=params_q["objective"],
             weight="covid_weight",
@@ -169,85 +169,92 @@ if __name__ == "__main__":
             "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
             "funcs": np.array(flist),
         },
-        "ts_uid_week": {
-            "groups": [ts_uid, "week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                    np.ceil(horizon / 7) + round((macro_horizon / 4)),
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-        },
     }
 
-    median_aggregate = (
-        train_data.filter(
-            pl.col(date_col) >= pl.col(date_col).max() - timedelta(days=364 * 3)
+    for transform_strategy in [
+        # "rolling_zscore",
+        # "shiftn",
+        # "None",
+        # "rolling_mean",
+        # "rolling_median",
+        "log",
+        "mean",
+        "median",
+    ]:
+        print("=" * 50)
+        print(f"running with {transform_strategy = }")
+        print("=" * 50)
+
+        dir_forecaster = DirectForecaster(
+            model=model_reg,
+            ts_uid=ts_uid,
+            forecast_range=np.arange(macro_horizon),
+            target_str=y,
+            date_str=date_col,
+            exogs=exog,
+            features_params=autoreg_dict,
+            n_jobs=-1,
+            transform_strategy=transform_strategy,
+            transform_win_size=28 * 2,
         )
-        .group_by(ts_uid)
-        .agg(overall_median=pl.col(y).median())
-    )
-
-    train_data = train_data.join(median_aggregate, how="left", on=[ts_uid])
-    test_data = test_data.join(median_aggregate, how="left", on=[ts_uid])
-
-    dir_forecaster = DirectForecaster(
-        model=model_reg,
-        ts_uid=ts_uid,
-        forecast_range=np.arange(macro_horizon),
-        target_str=y,
-        date_str=date_col,
-        exogs=exog,
-        features_params=autoreg_dict,
-        n_jobs=-1,
-    )
-    # fit model through the wrapper
-    dir_forecaster.fit(
-        train_data=train_data.with_columns(
-            (pl.col(y) - pl.col("overall_median")).alias(y)
-        ),
-        strategy=set_strategy,
-    )
-    display(dir_forecaster.evaluate())
-    # and forecast test.
-    (
-        test_data.select(["index", date_col, ts_uid, "overall_median"])
-        .join(
-            (
-                dir_forecaster.predict(full_data)
-                .filter(pl.col("train") == 0)
-                .select([date_col, ts_uid, "y_hat"])
-            ),
-            how="left",
-            on=[date_col, ts_uid],
+        # fit model through the wrapper
+        dir_forecaster.fit(
+            deepcopy(train_data),
+            strategy=set_strategy,
         )
-        .fill_null(0)
-        .select(["index", "y_hat", "overall_median"])
-        .with_columns((pl.col("y_hat") + pl.col("overall_median")).alias("y_hat"))
-        .rename({"y_hat": "y"})
-    ).write_csv(f"out/submit/{set_strategy}_direct_lgb.csv")
-
-    # write valid for evaluation purpose.
-    if set_strategy == "global":
-        valid_out = dir_forecaster.valid.with_columns(
-            pl.lit(dir_forecaster.model.predict(dir_forecaster.valid)).alias(
-                f"{set_strategy}_direct_y_hat"
+        display(dir_forecaster.evaluate())
+        name_out = dir_forecaster.output_name
+        # and forecast test.
+        test_output = (
+            test_data.select(["index", date_col, ts_uid])
+            .join(
+                (
+                    dir_forecaster.predict(full_data)
+                    .filter(pl.col("train") == 0)
+                    .select([date_col, ts_uid, name_out])
+                ),
+                how="left",
+                on=[date_col, ts_uid],
             )
-        ).with_columns(
-            (pl.col(f"{set_strategy}_direct_y_hat") + pl.col("overall_median")).alias(
-                f"{set_strategy}_direct_y_hat"
-            )
+            .select(["index", "y_hat"])
+            .rename({"y_hat": "y"})
         )
-    else:
-        valid_out = (
-            dir_forecaster.predict_local(dir_forecaster.valid)
-            .select([ts_uid, date_col, "y_hat", "overall_median"])
-            .with_columns(y_hat=pl.col("y_hat") + pl.col("overall_median"))
-            .rename({"y_hat": f"{set_strategy}_direct_y_hat"})
+        display("test nlcnt", test_output.null_count(), test_output.shape)
+        test_output.fill_null(0).write_csv(
+            f"out/submit/{set_strategy}_direct_{transform_strategy}_lgb.csv"
         )
 
-    valid_out.write_csv(f"out/{set_strategy}_direct_lgb.csv")
+        # write valid for evaluation purpose.
+        if set_strategy == "global":
+            valid_out = (
+                dir_forecaster.target_transformer.inverse_transform(
+                    dir_forecaster.predict_global(dir_forecaster.valid),
+                    target=dir_forecaster.output_name,
+                )
+                .rename(
+                    {
+                        dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
+                    }
+                )
+                .drop(dir_forecaster.target_transformer.agg_fname)
+            )
+            valid_out = dir_forecaster.target_transformer.inverse_transform(
+                valid_out, target=dir_forecaster.target_str
+            )
+        else:
+            valid_out = (
+                dir_forecaster.target_transformer.inverse_transform(
+                    dir_forecaster.predict_local(dir_forecaster.valid),
+                    target=dir_forecaster.output_name,
+                )
+                .rename(
+                    {
+                        dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
+                    }
+                )
+                .drop(dir_forecaster.target_transformer.agg_fname)
+            )
+            valid_out = dir_forecaster.target_transformer.inverse_transform(
+                valid_out, target=dir_forecaster.target_str
+            )
+        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_direct_lgb.csv")
