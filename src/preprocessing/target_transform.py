@@ -97,10 +97,7 @@ class TargetTransform:
             data.with_columns(
                 pl.coalesce(
                     pl.col(agg_fname),
-                    pl.col(agg_fname)
-                    .backward_fill()
-                    .over(self.ts_uid)
-                    .alias(self.agg_fname),
+                    pl.col(agg_fname).forward_fill().over(self.ts_uid).alias(agg_fname),
                 )
             )
             # forward is okay after backward
@@ -108,9 +105,9 @@ class TargetTransform:
                 pl.coalesce(
                     pl.col(agg_fname),
                     pl.col(agg_fname)
-                    .forward_fill()
+                    .backward_fill()
                     .over(self.ts_uid)
-                    .alias(self.agg_fname),
+                    .alias(agg_fname),
                 )
             )
         )
@@ -230,7 +227,7 @@ class TargetTransform:
             self.aggregates = (
                 pl.concat(
                     (data.select(select_exp), futr_df.select(select_exp)),
-                    how="vertical_relaxed",
+                    how="vertical",
                 )
                 .sort(by=[self.ts_uid, self.time_col])
                 .select([self.time_col, self.ts_uid, self.target])
@@ -243,7 +240,9 @@ class TargetTransform:
                     .alias(self.time_col)
                 )
                 .rename({self.target: self.agg_fname})
-            ).unique(subset=[self.ts_uid, self.time_col])
+                .pipe(self.incremental_rols_fill_null, agg_fname=self.agg_fname)
+                .unique(subset=[self.ts_uid, self.time_col])
+            )
 
             # join aggregates.
             data = (
@@ -265,7 +264,7 @@ class TargetTransform:
         if self.strategy not in ("log", "None", "rolling_zscore"):
             data = data.with_columns(
                 (pl.col(self.target) - pl.col(self.agg_fname)).alias(self.target)
-            )
+            ).drop(self.agg_fname)
         elif self.strategy == "rolling_zscore":
             data = data.with_columns(
                 (
@@ -274,8 +273,8 @@ class TargetTransform:
                         - pl.col(f"mean_{self.agg_fname}").cast(pl.Float32)
                     )
                     / pl.col(f"std_{self.agg_fname}").cast(pl.Float32)
-                ).alias(self.agg_fname)
-            )
+                ).alias(self.target)
+            ).drop([f"std_{self.agg_fname}", f"mean_{self.agg_fname}"])
         self.fitted = True
         return data
 

@@ -26,6 +26,8 @@ class ChainForecaster:
         target_str: str = "y",
         date_str: str = "date",
         n_jobs: int = -1,
+        transform_win_size: Optional[int] = 30,
+        transform_strategy: Optional[str] = "None",
     ):
         self.chains = np.array_split(np.arange(total_forecast_horizon), n_splits)
         self.model = model
@@ -37,6 +39,8 @@ class ChainForecaster:
         self.total_forecast_horizon = total_forecast_horizon
         self.output_name = "y_hat"
         self.n_jobs = n_jobs
+        self.transform_strategy = transform_strategy
+        self.transform_win_size = transform_win_size
 
     def fit_single(self, chain_pieces: List[int], data: pl.DataFrame, strategy: str):
         forecaster = DirectForecaster(
@@ -47,6 +51,8 @@ class ChainForecaster:
             date_str=self.date_str,
             exogs=self.exogs,
             features_params=self.params_dict,
+            transform_win_size=self.transform_win_size,
+            transform_strategy=self.transform_strategy,
         )
         forecaster.fit(data, strategy=strategy)
         return forecaster
@@ -63,29 +69,18 @@ class ChainForecaster:
     def evaluate(self, return_valid: bool = False):
         if self.fitted:
             reconstruct_valid = []
-            for chain_model in self.models_out:
-                reconstruct_valid.append(
-                    (
-                        chain_model.valid.with_columns(
-                            pl.lit(chain_model.model.predict(chain_model.valid)).alias(
-                                self.output_name
-                            )
-                        ).select(
-                            [
-                                self.ts_uid,
-                                self.date_str,
-                                self.output_name,
-                                self.target_str,
-                            ]
-                        )
-                    )
+            for model in self.models_out:
+                _, valid_output = model.evaluate(return_output=True)
+                valid_output = valid_output.select(
+                    [self.ts_uid, self.date_str, self.target_str, self.output_name]
                 )
-            reconstruct_valid = pl.concat(reconstruct_valid, how="vertical")
-            y_real = reconstruct_valid[self.target_str].to_numpy().ravel()
-            y_hat = reconstruct_valid[self.output_name].to_numpy().ravel()
+                reconstruct_valid.append(valid_output)
+            valid_output = pl.concat(reconstruct_valid, how="vertical_relaxed")
+            y_real = valid_output[self.target_str].fill_null(0).to_numpy().ravel()
+            y_hat = valid_output[self.output_name].fill_null(0).to_numpy().ravel()
             metrics_valid = display_metrics(y_real, y_hat)
             if return_valid:
-                return reconstruct_valid, metrics_valid
+                return valid_output, metrics_valid
             else:
                 return metrics_valid
         else:

@@ -172,11 +172,11 @@ if __name__ == "__main__":
     }
 
     for transform_strategy in [
-        # "rolling_zscore",
-        # "shiftn",
-        # "None",
-        # "rolling_mean",
-        # "rolling_median",
+        "rolling_zscore",
+        "shiftn",
+        "None",
+        "rolling_mean",
+        "rolling_median",
         "log",
         "mean",
         "median",
@@ -219,7 +219,6 @@ if __name__ == "__main__":
             .select(["index", "y_hat"])
             .rename({"y_hat": "y"})
         )
-        display("test nlcnt", test_output.null_count(), test_output.shape)
         test_output.fill_null(0).write_csv(
             f"out/submit/{set_strategy}_direct_{transform_strategy}_lgb.csv"
         )
@@ -236,7 +235,7 @@ if __name__ == "__main__":
                         dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
                     }
                 )
-                .drop(dir_forecaster.target_transformer.agg_fname)
+                .fill_null(0.0)
             )
             valid_out = dir_forecaster.target_transformer.inverse_transform(
                 valid_out, target=dir_forecaster.target_str
@@ -252,7 +251,7 @@ if __name__ == "__main__":
                         dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
                     }
                 )
-                .drop(dir_forecaster.target_transformer.agg_fname)
+                .fill_null(0.0)
             )
             valid_out = dir_forecaster.target_transformer.inverse_transform(
                 valid_out, target=dir_forecaster.target_str

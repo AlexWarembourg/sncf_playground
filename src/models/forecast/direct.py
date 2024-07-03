@@ -262,7 +262,7 @@ class DirectForecaster:
                     self.valid.select(x_test.columns),
                     x_test,
                 ),
-                how="vertical_relaxed",
+                how="vertical",
             )
         shape = x_test[self.date_str].n_unique()
         assert (
@@ -310,9 +310,12 @@ class DirectForecaster:
             ),
             how="cross",
         )
+        future_df = future_df.with_columns(
+            pl.lit(np.nan).cast(pl.Float32).alias(self.target_str)
+        )
         return future_df
 
-    def evaluate(self):
+    def evaluate(self, return_output: bool = False):
         if self.fitted:
             if self.strategy == "global":
                 hat = self.predict_global(x_test=self.valid)
@@ -321,6 +324,7 @@ class DirectForecaster:
                         hat, target=self.output_name
                     )
                     .select(self.output_name)
+                    .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
@@ -329,19 +333,18 @@ class DirectForecaster:
                         hat, target=self.target_str
                     )
                     .select(self.target_str)
+                    .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
             elif self.strategy == "local":
                 hat = self.predict_local(x_test=self.valid)
-                hat = self.target_transformer.inverse_transform(
-                    hat, target=self.output_name
-                )
                 y_hat = (
                     self.target_transformer.inverse_transform(
                         hat, target=self.output_name
                     )
                     .select(self.output_name)
+                    .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
@@ -350,6 +353,7 @@ class DirectForecaster:
                         hat, target=self.target_str
                     )
                     .select(self.target_str)
+                    .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
@@ -357,7 +361,14 @@ class DirectForecaster:
                 raise ValueError("Unknown Strategy")
             # display(y_real, y_hat, hat.select([self.output_name, self.target_str]))
             metrics_valid = display_metrics(y_real, y_hat)
-            return metrics_valid
+            if return_output:
+                hat = hat.with_columns(
+                    pl.lit(y_real).alias(self.target_str),
+                    pl.lit(y_hat).alias(self.output_name),
+                )
+                return metrics_valid, hat
+            else:
+                return metrics_valid
         else:
             raise ValueError("Model is not fitted.")
 

@@ -180,33 +180,48 @@ if __name__ == "__main__":
         },
     }
 
-    forecaster = ChainForecaster(
-        model=model_reg,
-        ts_uid=ts_uid,
-        target_str=y,
-        date_str=date_col,
-        exogs=exog,
-        params_dict=autoreg_dict,
-        total_forecast_horizon=181,
-        n_jobs=-1,
-        n_splits=4,
-    )
+    for transform_strategy in [
+        "rolling_zscore",
+        "shiftn",
+        "None",
+        "rolling_mean",
+        "rolling_median",
+        "log",
+        "mean",
+        "median",
+    ]:
+        forecaster = ChainForecaster(
+            model=model_reg,
+            ts_uid=ts_uid,
+            target_str=y,
+            date_str=date_col,
+            exogs=exog,
+            params_dict=autoreg_dict,
+            total_forecast_horizon=181,
+            n_jobs=-1,
+            n_splits=4,
+            transform_strategy=transform_strategy,
+            transform_win_size=28 * 2,
+        )
+        # display(test_data)
+        forecaster.fit(data=train_data, strategy=set_strategy)
+        test_data = (
+            deepcopy(test_data)
+            .select(["index", date_col, ts_uid])
+            .join(
+                (forecaster.predict(full_data).select([date_col, ts_uid, "y_hat"])),
+                how="left",
+                on=[date_col, ts_uid],
+            )
+        )
+        (
+            test_data.fill_null(0).select(["index", "y_hat"]).rename({"y_hat": "y"})
+        ).write_csv(f"out/submit/{set_strategy}_{transform_strategy}_chain_lgb.csv")
 
-    forecaster.fit(data=train_data, strategy=set_strategy)
-    test_data = test_data.select(["index", date_col, ts_uid]).join(
-        (forecaster.predict(full_data).select([date_col, ts_uid, "y_hat"])),
-        how="left",
-        on=[date_col, ts_uid],
-    )
-    display(test_data.select(pl.col("y_hat")).null_count())
-    test_data = (
-        test_data.fill_null(0).select(["index", "y_hat"]).rename({"y_hat": "y"})
-    ).write_csv(f"out/submit/{set_strategy}_chain_lgb.csv")
-
-    # save valid for evaluation purpose.
-    valid_out, metrics_out = forecaster.evaluate(return_valid=True)
-    valid_out = valid_out.select([ts_uid, date_col, "y_hat"]).rename(
-        {"y_hat": f"{set_strategy}_chain_y_hat"}
-    )
-    display(metrics_out)
-    valid_out.write_csv(f"out/{set_strategy}_chain_lgb.csv")
+        # save valid for evaluation purpose.
+        valid_out, metrics_out = forecaster.evaluate(return_valid=True)
+        valid_out = valid_out.select([ts_uid, date_col, "y_hat"]).rename(
+            {"y_hat": f"{set_strategy}_{transform_strategy}_chain_y_hat"}
+        )
+        display(metrics_out)
+        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_chain_lgb.csv")
