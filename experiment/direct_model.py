@@ -220,7 +220,7 @@ if __name__ == "__main__":
             .rename({"y_hat": "y"})
         )
         test_output.fill_null(0).write_csv(
-            f"out/submit/{set_strategy}_direct_{transform_strategy}_lgb.csv"
+            f"out/submit/{set_strategy}_{transform_strategy}_direct_lgb.csv"
         )
 
         # write valid for evaluation purpose.
@@ -232,7 +232,7 @@ if __name__ == "__main__":
                 )
                 .rename(
                     {
-                        dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
+                        dir_forecaster.output_name: f"{set_strategy}_{transform_strategy}_direct_y_hat"
                     }
                 )
                 .fill_null(0.0)
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                 )
                 .rename(
                     {
-                        dir_forecaster.output_name: f"{set_strategy}_direct_{transform_strategy}_y_hat"
+                        dir_forecaster.output_name: f"{set_strategy}_{transform_strategy}_direct_y_hat"
                     }
                 )
                 .fill_null(0.0)

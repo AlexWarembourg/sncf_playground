@@ -92,5 +92,6 @@ if __name__ == "__main__":
     )
     valid_forecast.write_csv("out/nixtla_validation.csv")
     print(output_metrics)
+
     test_forecast = forecast_stats_base.forecast(train_data)
     test_forecast.write_csv("out/submit/nixtla_forecast.csv")

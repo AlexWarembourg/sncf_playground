@@ -15,6 +15,7 @@ downloads/
 eggs/
 lightning_logs/
 .eggs/
+.lightning_logs/
 data/
 notebook/
 out/
