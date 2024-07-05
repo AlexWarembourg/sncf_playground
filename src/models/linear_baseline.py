@@ -3,8 +3,8 @@ import numpy as np
 
 from typing import List, Union, Optional, Dict
 from sklearn.linear_model import RidgeCV
+from datetime import timedelta
 from pygam import GAM
-from datetime import datetime, timedelta
 
 from joblib import Parallel, delayed
 import polars as pl
@@ -24,6 +24,7 @@ class LogLinear:
         date_col: str = "date",
         ndays: int = 364,
         horizon: int = 181,
+        forecast_end_dt: str = None,
     ) -> None:
         self.n_jobs = n_jobs
         self.models = {}
@@ -36,6 +37,7 @@ class LogLinear:
         self.use_gam = use_gam
         self.ndays = ndays
         self.horizon = horizon
+        self.forecast_end_dt = forecast_end_dt
 
     def basic_features(self, end_date) -> pl.DataFrame:
         index = pd.date_range(
@@ -74,13 +76,31 @@ class LogLinear:
 
     def predict_single(self, key: str) -> pl.DataFrame:
         model, dp = self.models[str(key)]
-        features = dp.out_of_sample(self.horizon)
+        end_times = dp.index.max() + timedelta(days=self.horizon)
+        forecast_horizon = self.horizon
+        resize = False
+        if end_times != self.forecast_end_dt:
+            add = abs(
+                (
+                    (dp.index.max() + timedelta(days=self.horizon))
+                    - pd.to_datetime(end_times)
+                ).days
+                + 1
+            )
+            forecast_horizon = self.horizon + add
+            resize = True
+        features = dp.out_of_sample(forecast_horizon)
+        features = (
+            features.loc[features.index.max() - timedelta(days=self.horizon) :]
+            if resize
+            else features
+        )
         forecast = np.expm1(model.predict(features))
         output = pl.DataFrame()
         output = output.with_columns(
             pl.lit(forecast).alias("y_hat"),
-            pl.lit(key[0]).alias(self.ts_uid),
-            # pl.lit(X["date"]),
+            pl.lit(key).alias(self.ts_uid),
+            pl.lit(features.index.to_numpy().ravel()).alias(self.date_col),
         )
         return output
 

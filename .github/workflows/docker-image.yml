@@ -29,4 +29,4 @@ jobs:
       uses: docker/build-push-action@v2
       with:
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/my_ml_project:latest
+        tags: ${{ secrets.DOCKER_USERNAME }}/forecast_project:latest
