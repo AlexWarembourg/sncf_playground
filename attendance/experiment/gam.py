@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import toml
-from src.models.linear_baseline import LogLinear
 
 # import matplotlib.pyplot as plt
 from pathlib import Path
@@ -11,12 +10,15 @@ from datetime import timedelta
 import sys
 
 features = toml.load(
-    r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\data\features.toml"
+    r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance\data\features.toml"
 )
 times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
 p = Path(features["ABS_DATA_PATH"])
-sys.path.insert(1, p)
+sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
+
+from src.preprocessing.quality import find_ts_outlier
+from src.models.linear_baseline import FLinear
 from src.project_utils import load_data
 
 ts_uid = features["ts_uid"]
@@ -43,8 +45,11 @@ def freeze_validation_set(
 if __name__ == "__main__":
 
     train_data, test_data, submission = load_data(p)
+    train_data = find_ts_outlier(
+        train_data, ts_uid=ts_uid, y=y, date_col=date_col, window_size=90
+    ).filter(pl.col("not_outlier") == 1)
 
-    ll = LogLinear(
+    ll = FLinear(
         features=["job", "ferie", "vacances"],
         target=y,
         ts_uid=ts_uid,
@@ -70,7 +75,7 @@ if __name__ == "__main__":
         .drop("y")
         .rename({"y_hat": "y"})
         .with_columns(pl.col(y).clip_min(0).cast(pl.Float32).fill_null(0.0))
-        .write_csv("out/submit/gam.csv")
+        .write_csv("attendance/out/submit/gam.csv")
     )
 
     # ========== validation ===========
@@ -78,7 +83,7 @@ if __name__ == "__main__":
         train_data, date=date_col, val_size=181, return_train=True
     )
 
-    ll = LogLinear(
+    ll = FLinear(
         features=["job", "ferie", "vacances"],
         target=y,
         ts_uid=ts_uid,
@@ -90,4 +95,4 @@ if __name__ == "__main__":
 
     ll.fit(tr)
     out = ll.predict()
-    out = out.write_csv("out/gam.csv")
+    out = out.write_csv("attendance/out/gam.csv")

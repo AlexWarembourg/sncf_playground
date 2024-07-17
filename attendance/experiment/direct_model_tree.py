@@ -15,20 +15,22 @@ from datetime import timedelta
 
 sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
 
-from src.preprocessing.times import (
+from attendance.src.preprocessing.times import (
     from_day_to_time_fe,
     get_covid_table,
 )
-from src.preprocessing.quality import trim_timeseries, minimum_length_uid
-from src.models.forecast.direct import DirectForecaster
-from src.preprocessing.lags import get_significant_lags
-from src.preprocessing.times import get_basic_holidays
+from attendance.src.preprocessing.quality import trim_timeseries, minimum_length_uid
+from attendance.src.models.forecast.direct import DirectForecaster
+from attendance.src.preprocessing.lags import get_significant_lags
+from attendance.src.preprocessing.times import get_basic_holidays
 
 # metrics of the competition.
-from src.project_utils import load_data
-from src.models.lgb_wrapper import GBTModel
+from attendance.src.project_utils import load_data
+from attendance.src.models.lgb_wrapper import GBTModel
 
-features = toml.load("data/features.toml")
+features = toml.load(
+    r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance\data\features.toml"
+)
 
 times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     flag = parser.parse_args()
     set_strategy = flag.strategy
     params_file_name = "params" if set_strategy == "global" else "individual_params"
-    with open(f"data/{params_file_name}.json", "rb") as stream:
+    with open(f"attendance/data/{params_file_name}.json", "rb") as stream:
         params_q = json.load(stream)
 
     covid_df = get_covid_table(2015, 2024)
@@ -145,7 +147,7 @@ if __name__ == "__main__":
         )
 
     lags = deepcopy(significant_lags)
-    win_list = [7, 28, 56]
+    win_list = [7, 14, 28, 56]
 
     autoreg_dict = {
         ts_uid: {
@@ -155,8 +157,12 @@ if __name__ == "__main__":
             "shifts": lambda horizon: np.int32([horizon, horizon + 28]),
             "lags": lambda horizon: np.array(significant_lags) + horizon,
             "funcs": np.array(flist),
-        },
-        "ts_uid_dow": {
+            "delta": [(7, 7), (7, 14), (7, 28), (14, 14), (14, 28)],
+        }
+    }
+
+    """        
+    "ts_uid_dow": {
             "groups": [ts_uid, "day_of_week"],
             "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
             "wins": np.array([4, 12]),
@@ -168,8 +174,9 @@ if __name__ == "__main__":
             ),
             "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
             "funcs": np.array(flist),
+            "delta": [(2, 2), (2, 4), (4, 4)],
         },
-    }
+    """
 
     for transform_strategy in [
         "rolling_zscore",
@@ -195,13 +202,10 @@ if __name__ == "__main__":
             features_params=autoreg_dict,
             n_jobs=-1,
             transform_strategy=transform_strategy,
-            transform_win_size=28 * 2,
+            transform_win_size=28,
         )
         # fit model through the wrapper
-        dir_forecaster.fit(
-            deepcopy(train_data),
-            strategy=set_strategy,
-        )
+        dir_forecaster.fit(deepcopy(train_data), strategy=set_strategy, optimize=True)
         display(dir_forecaster.evaluate())
         name_out = dir_forecaster.output_name
         # and forecast test.
@@ -220,7 +224,7 @@ if __name__ == "__main__":
             .rename({"y_hat": "y"})
         )
         test_output.fill_null(0).write_csv(
-            f"out/submit/{set_strategy}_{transform_strategy}_direct_lgb.csv"
+            f"attendance/out/submit/{set_strategy}_{transform_strategy}_direct_lgb.csv"
         )
 
         # write valid for evaluation purpose.
@@ -256,4 +260,6 @@ if __name__ == "__main__":
             valid_out = dir_forecaster.target_transformer.inverse_transform(
                 valid_out, target=dir_forecaster.target_str
             )
-        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_direct_lgb.csv")
+        valid_out.write_csv(
+            f"attendance/out/{set_strategy}_{transform_strategy}_direct_lgb.csv"
+        )

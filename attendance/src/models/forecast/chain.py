@@ -7,10 +7,10 @@ from joblib import Parallel, delayed
 
 import polars as pl
 from copy import deepcopy
-from .direct import DirectForecaster
+from attendance.src.models.forecast.direct import DirectForecaster
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
-from src.analysis.metrics import display_metrics
+from attendance.src.analysis.metrics import display_metrics
 
 
 class ChainForecaster:

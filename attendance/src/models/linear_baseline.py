@@ -10,9 +10,11 @@ from joblib import Parallel, delayed
 import polars as pl
 from datetime import datetime
 from statsmodels.tsa.deterministic import DeterministicProcess
+import statsmodels.api as sm
+from sklearn.preprocessing import StandardScaler
 
 
-class LogLinear:
+class FLinear:
     def __init__(
         self,
         features: List[str],
@@ -25,6 +27,7 @@ class LogLinear:
         ndays: int = 364,
         horizon: int = 181,
         forecast_end_dt: str = None,
+        smoothing: bool = True,
     ) -> None:
         self.n_jobs = n_jobs
         self.models = {}
@@ -38,6 +41,7 @@ class LogLinear:
         self.ndays = ndays
         self.horizon = horizon
         self.forecast_end_dt = forecast_end_dt
+        self.smoothing = smoothing
 
     def basic_features(self, end_date) -> pl.DataFrame:
         index = pd.date_range(
@@ -54,16 +58,38 @@ class LogLinear:
         )
         return dp
 
+    def backup_model(self, y: pl.Series, n: int = 30) -> np.ndarray:
+        scalar = np.mean(y[-n:]) if len(y) > n else np.mean(y)
+        return np.tile(
+            scalar,
+            self.horizon,
+        )
+
     def fit_single(self, y, max_dt):
+        size = y.shape[0]
         dp = self.basic_features(end_date=max_dt)
         features = dp.in_sample()
-        size = y.shape[0]
         training_obs = size if self.ndays >= size else self.ndays
         features = features[-training_obs:]
-        y = y[-training_obs:]
-        model = GAM(distribution="normal") if self.use_gam else RidgeCV(cv=4)
-        model.fit(features, np.log1p(y))
-        return (model, dp)
+        y = np.log(
+            sm.nonparametric.lowess(
+                exog=np.arange(len(y[-training_obs:])),
+                endog=y[-training_obs:],
+                frac=1.0 / 3,
+            )[:, 1]
+            if self.smoothing
+            else y[-training_obs:]
+        )
+        if size > 364:
+            model = (
+                GAM(distribution="normal", link="identity")
+                if self.use_gam
+                else RidgeCV(cv=4)
+            )
+            model.fit(features, y)
+            return (model, dp, True)
+        else:
+            return (y, dp, False)
 
     def fit(self, data: pl.DataFrame) -> pl.DataFrame:
         self.all_keys = data[self.ts_uid].unique().to_list()
@@ -71,11 +97,11 @@ class LogLinear:
             delayed(self.fit_single)(y=df[self.target], max_dt=df[self.date_col].max())
             for key, df in data.group_by([self.ts_uid])
         )
-        for key, (model, dp) in zip(data[self.ts_uid].unique(), results):
-            self.models[key] = (model, dp)
+        for key, (model, dp, statut) in zip(data[self.ts_uid].unique(), results):
+            self.models[key] = (model, dp, statut)
 
     def predict_single(self, key: str) -> pl.DataFrame:
-        model, dp = self.models[str(key)]
+        model, dp, state = self.models[str(key)]
         end_times = dp.index.max() + timedelta(days=self.horizon)
         forecast_horizon = self.horizon
         resize = False
@@ -85,7 +111,6 @@ class LogLinear:
                     (dp.index.max() + timedelta(days=self.horizon))
                     - pd.to_datetime(end_times)
                 ).days
-                + 1
             )
             forecast_horizon = self.horizon + add
             resize = True
@@ -95,12 +120,17 @@ class LogLinear:
             if resize
             else features
         )
-        forecast = np.expm1(model.predict(features))
+        dt = features.index.to_numpy().ravel()
+        forecast = (
+            np.clip(np.exp(model.predict(features)), a_min=0, a_max=None)
+            if state
+            else np.exp(self.backup_model(y=model, n=90))
+        )
         output = pl.DataFrame()
         output = output.with_columns(
             pl.lit(forecast).alias("y_hat"),
             pl.lit(key).alias(self.ts_uid),
-            pl.lit(features.index.to_numpy().ravel()).alias(self.date_col),
+            pl.lit(dt).alias(self.date_col),
         )
         return output
 

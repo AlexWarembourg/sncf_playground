@@ -3,7 +3,12 @@ import polars as pl
 import numpy as np
 
 from datetime import timedelta
-from src.preprocessing.quality import find_ts_outlier
+
+import sys
+
+sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
+
+from attendance.src.preprocessing.quality import find_ts_outlier
 
 
 def forecast_to_submit(

@@ -9,15 +9,21 @@ import json
 import toml
 import sys
 import argparse
+from copy import deepcopy
+from datetime import timedelta
+from sklearn.preprocessing import RobustScaler, MinMaxScaler
 
-sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
+
+sys.path.insert(
+    0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance"
+)
 
 from src.preprocessing.times import (
     from_day_to_time_fe,
     get_covid_table,
 )
 from src.preprocessing.quality import trim_timeseries, minimum_length_uid
-from src.models.forecast.chain import ChainForecaster
+from src.models.forecast.direct import DirectForecaster
 from src.preprocessing.lags import get_significant_lags
 from src.preprocessing.times import get_basic_holidays
 
@@ -38,11 +44,13 @@ exog = ["job", "ferie", "vacances"] + times_cols
 in_dt = datetime.date(2017, 1, 1)
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="global", required=True)
+parser.add_argument("--kanify", default=False, required=True)
 
 if __name__ == "__main__":
 
     flag = parser.parse_args()
     set_strategy = flag.strategy
+    kanlayer = bool(flag.kanify)
     params_file_name = "params" if set_strategy == "global" else "individual_params"
     with open(f"data/{params_file_name}.json", "rb") as stream:
         params_q = json.load(stream)
@@ -105,45 +113,27 @@ if __name__ == "__main__":
     del left_term, right_term
 
     # define params
-    from copy import deepcopy
-
     significant_lags = get_significant_lags(train_data, date_col=date_col, target=y)
     significant_lags = [
         x for x in significant_lags if x <= macro_horizon and x % 7 == 0
     ]
+    from src.models.mlp_wrapper import TorchWrapper
+
+    num_cols = []
+    cat_cols = ["week", "month", "day_of_week", "job", "ferie", "vacances"]
+    sc = RobustScaler().set_output(transform="polars")
+
+    mlp = TorchWrapper(
+        batch_size=72,
+        num_cols=num_cols,
+        cat_cols=cat_cols,
+        target=y,
+        hidden_dim=300,
+        scaler=sc,
+        kan_bool=kanlayer,
+    )
     lags = deepcopy(significant_lags)
     win_list = [7, 28, 56]
-
-    if set_strategy == "global":
-        model_reg = GBTModel(
-            params=params_q,
-            early_stopping_value=150,
-            features=None,
-            custom_loss=params_q["objective"],
-            weight="covid_weight",
-            categorical_features=[],
-        )
-
-    else:
-        from src.models.scikit_wrapper import ScikitWrapper
-        from sklearn.ensemble import RandomForestRegressor
-
-        model_reg = ScikitWrapper(
-            model=RandomForestRegressor(
-                max_depth=8,
-                n_estimators=200,
-                n_jobs=-1,
-                min_samples_split=20,
-                min_samples_leaf=15,
-                max_features=0.85,
-                random_state=42,
-                ccp_alpha=0.3,
-            ),
-            params=None,
-            features=None,
-            categorical_features=[],
-            weight="covid_weight",
-        )
 
     autoreg_dict = {
         ts_uid: {
@@ -153,31 +143,8 @@ if __name__ == "__main__":
             "shifts": lambda horizon: np.int32([horizon, horizon + 28]),
             "lags": lambda horizon: np.array(significant_lags) + horizon,
             "funcs": np.array(flist),
-        },
-        "ts_uid_dow": {
-            "groups": [ts_uid, "day_of_week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-        },
-        "ts_uid_week": {
-            "groups": [ts_uid, "week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-        },
+            "delta": [(7, 7), (7, 14), (7, 28), (14, 14), (14, 28)],
+        }
     }
 
     for transform_strategy in [
@@ -190,38 +157,79 @@ if __name__ == "__main__":
         "mean",
         "median",
     ]:
-        forecaster = ChainForecaster(
-            model=model_reg,
+        print("=" * 50)
+        print(f"running with {transform_strategy = }")
+        print("=" * 50)
+
+        dir_forecaster = DirectForecaster(
+            model=mlp,
             ts_uid=ts_uid,
+            forecast_range=np.arange(macro_horizon),
             target_str=y,
             date_str=date_col,
             exogs=exog,
-            params_dict=autoreg_dict,
-            total_forecast_horizon=181,
+            features_params=autoreg_dict,
             n_jobs=-1,
-            n_splits=4,
             transform_strategy=transform_strategy,
             transform_win_size=28 * 2,
         )
-        # display(test_data)
-        forecaster.fit(data=train_data, strategy=set_strategy)
-        test_data = (
-            deepcopy(test_data)
-            .select(["index", date_col, ts_uid])
+        # fit model through the wrapper
+        dir_forecaster.fit(
+            deepcopy(train_data),
+            strategy=set_strategy,
+        )
+        display(dir_forecaster.evaluate())
+        name_out = dir_forecaster.output_name
+        # and forecast test.
+        test_output = (
+            test_data.select(["index", date_col, ts_uid])
             .join(
-                (forecaster.predict(full_data).select([date_col, ts_uid, "y_hat"])),
+                (
+                    dir_forecaster.predict(full_data)
+                    .filter(pl.col("train") == 0)
+                    .select([date_col, ts_uid, name_out])
+                ),
                 how="left",
                 on=[date_col, ts_uid],
             )
+            .select(["index", "y_hat"])
+            .rename({"y_hat": "y"})
         )
-        (
-            test_data.fill_null(0).select(["index", "y_hat"]).rename({"y_hat": "y"})
-        ).write_csv(f"out/submit/{set_strategy}_{transform_strategy}_chain_lgb.csv")
+        test_output.fill_null(0).write_csv(
+            f"out/submit/{set_strategy}_{transform_strategy}_direct_mlp.csv"
+        )
 
-        # save valid for evaluation purpose.
-        valid_out, metrics_out = forecaster.evaluate(return_valid=True)
-        valid_out = valid_out.select([ts_uid, date_col, "y_hat"]).rename(
-            {"y_hat": f"{set_strategy}_{transform_strategy}_chain_y_hat"}
-        )
-        display(metrics_out)
-        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_chain_lgb.csv")
+        # write valid for evaluation purpose.
+        if set_strategy == "global":
+            valid_out = (
+                dir_forecaster.target_transformer.inverse_transform(
+                    dir_forecaster.predict_global(dir_forecaster.valid),
+                    target=dir_forecaster.output_name,
+                )
+                .rename(
+                    {
+                        dir_forecaster.output_name: f"{set_strategy}_{transform_strategy}_direct_y_hat"
+                    }
+                )
+                .fill_null(0.0)
+            )
+            valid_out = dir_forecaster.target_transformer.inverse_transform(
+                valid_out, target=dir_forecaster.target_str
+            )
+        else:
+            valid_out = (
+                dir_forecaster.target_transformer.inverse_transform(
+                    dir_forecaster.predict_local(dir_forecaster.valid),
+                    target=dir_forecaster.output_name,
+                )
+                .rename(
+                    {
+                        dir_forecaster.output_name: f"{set_strategy}_{transform_strategy}_direct_y_hat"
+                    }
+                )
+                .fill_null(0.0)
+            )
+            valid_out = dir_forecaster.target_transformer.inverse_transform(
+                valid_out, target=dir_forecaster.target_str
+            )
+        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_direct_mlp.csv")

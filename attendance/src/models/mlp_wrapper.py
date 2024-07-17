@@ -4,11 +4,12 @@ from typing import Any, List, Dict, Union, Optional
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
+import math
 import torch.nn.functional as F
 from functools import partial
 import torch.optim as optim
 import copy
-
+import polars as pl
 from sklearn.preprocessing import StandardScaler
 
 
@@ -367,6 +368,7 @@ class TorchWrapper:
         cat_cols: List[str],
         target: str,
         scaler: callable = None,
+        kan_bool: bool = False,
     ):
         self.batch_size = batch_size
         self.hidden_dim = hidden_dim
@@ -379,6 +381,7 @@ class TorchWrapper:
         self.num_categorical_features = len(cat_cols)
         self.criterion = nn.MSELoss()
         self.scaler = scaler
+        self.kan_bool = kan_bool
         self.scaler_is_fitted = False
 
     @property
@@ -463,6 +466,7 @@ class TorchWrapper:
             num_features=self.num_lags,
             embedding_sizes=embedding_sizes,
             hidden_dim=self.hidden_dim,
+            kan_layer=self.kan_bool,
         )
         return train_loader, val_loader
 
@@ -472,7 +476,7 @@ class TorchWrapper:
         valid_x: pl.DataFrame,
         num_epochs: int = 100,
         patience: int = 10,
-        learning_rate: float = 0.0007,
+        learning_rate: float = 0.0025,
         decay: float = 0.2,
         train_y: Optional[Any] = None,  # this is a placeholder don't meant to be used
         valid_y: Optional[Any] = None,  # this is a placeholder don't meant to be used

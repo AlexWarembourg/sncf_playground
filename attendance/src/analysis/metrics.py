@@ -56,4 +56,5 @@ def display_metrics(y, yhat, name="default"):
     metrics["wfiab"] = weighted_reliability(y, yhat, clip=True)
     metrics["mae"] = mean_absolute_error(y, yhat)
     metrics["smape"] = smape(y, yhat)
+    metrics["mape"] = mean_absolute_percentage_error(y, yhat)
     return metrics

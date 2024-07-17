@@ -25,6 +25,7 @@ from statsforecast.models import (
     AutoTBATS,
     AutoETS,
     AutoCES,
+    MSTL,
 )
 
 features = toml.load("data/features.toml")
@@ -34,20 +35,22 @@ ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
 
-in_dt = datetime.date(2020, 1, 1)
+in_dt = datetime.date(2021, 1, 1)
+season_length = 28
 
 my_way_to_go_baseline = [
     HoltWinters(),
     AutoTheta(),
+    MSTL(season_length=[season_length, 90], trend_forecaster=HoltWinters())
     AutoARIMA(),
     AutoETS(),
-    AutoTBATS(season_length=[28]),
+    AutoTBATS(season_length=[season_length]),
 ]
 
 # Instantiate StatsForecast class as sf
 sf = StatsForecast(
     models=my_way_to_go_baseline,
-    fallback_model=SeasonalNaive(season_length=28),
+    fallback_model=SeasonalNaive(season_length=season_length),
     n_jobs=-1,
     freq="1d",
 )

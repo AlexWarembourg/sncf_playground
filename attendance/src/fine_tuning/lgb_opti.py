@@ -7,15 +7,13 @@ import optuna
 import pandas as pd
 from sklearn.metrics import mean_squared_error
 from sklearn.model_selection import train_test_split
-from models.lgb_wrapper import GBTModel
-from models.forecast.direct import DirectForecaster
 
 
 def objective(
+    model,
     trial: optuna.trial,
     train_data: pd.DataFrame,
     forecaster_object,
-    exog: List,
     seed: int = 12345,
 ):
     """_summary_
@@ -39,7 +37,7 @@ def objective(
         "metric": trial.suggest_categorical("metric", ["rmse"]),
         "alpha": trial.suggest_categorical(
             "alpha",
-            [0.5, 0.52, 0.55, 0.57, 0.6, 0.61, 0.62, 0.63, 0.64, 0.65, 0.7, 0.69, 0.7],
+            [0.5],
         ),
         "force_row_wise": trial.suggest_categorical("force_row_wise", [True, False]),
         "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.05, log=False),
@@ -49,13 +47,10 @@ def objective(
         "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
         "min_child_weight": trial.suggest_float("min_child_weight", 1e-3, 4, log=True),
-        "min_child_samples": trial.suggest_float(
-            "min_child_samples", 20, 5000, log=False
-        ),
         "num_iterations": trial.suggest_int(
             "n_estimators",
-            200,
-            3000,
+            50,
+            2500,
         ),
         "num_leaves": trial.suggest_int("num_leaves", 25, 800),
         "max_bins": trial.suggest_int("max_bins", 24, 1000),
@@ -68,16 +63,7 @@ def objective(
         "seed": trial.suggest_categorical("seed", [seed]),
         "verbose": trial.suggest_categorical("verbose", [-1]),
     }
-
-    effect_m = GBTModel(
-        params=None,
-        early_stopping_value=200,
-        features=None,
-        custom_loss="l2",
-        categorical_features=[],
-    )
-    effect_m.params = optuna_params
-    forecaster_object.model = effect_m
+    model.params = optuna_params
     forecaster_object.fit(train_data=train_data)
     return forecaster_object.evaluate()["rmse"].values[0]
 

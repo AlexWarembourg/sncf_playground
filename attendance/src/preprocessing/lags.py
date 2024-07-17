@@ -1,5 +1,5 @@
 import polars as pl
-from typing import List, Union, Dict, Optional
+from typing import List, Union, Dict, Optional, Tuple
 import numpy as np
 from statsmodels.tsa.stattools import pacf
 
@@ -31,6 +31,37 @@ def reference_shift_from_day(
         .over([ts_uid, dayofyear_col])
         .alias(f"reference_{target_col}")
     )
+
+
+def pl_compute_seq_delta_features(
+    df: pl.DataFrame,
+    target_col: str,
+    delta_list: List[Tuple[int, int]],
+    ts_uid: str,
+    date: str,
+    horizon: int = 1,
+    delta_func: str = "rolling_mean",
+) -> pl.DataFrame:
+    sort_keys = [date] + [ts_uid] if isinstance(ts_uid, str) else ts_uid
+    concat_keys = ts_uid if isinstance(ts_uid, str) else "@".join(ts_uid)
+    df = df.sort(sort_keys)
+    seq_to_seq_delta = [
+        (
+            (
+                getattr(pl.col(target_col).shift(horizon), delta_func)(
+                    initial_seq
+                ).over(ts_uid)
+            )
+            - (
+                getattr(pl.col(target_col).shift(horizon + initial_seq), delta_func)(
+                    later_seq
+                ).over(ts_uid)
+            )
+        ).alias(f"ar_{target_col}_delta{initial_seq}_{later_seq}_{concat_keys}")
+        for initial_seq, later_seq in delta_list
+    ]
+    df = df.with_columns(seq_to_seq_delta)
+    return df
 
 
 def pl_compute_lagged_features(
@@ -104,6 +135,8 @@ def compute_autoreg_features(
     target_col: str,
     auto_reg_params: Dict[str, Dict[str, List[Union[str, int]]]],
     date_str: str,
+    with_rols: bool = True,
+    with_delta: bool = True,
 ):
     for group_fe in auto_reg_params.keys():
         params_group = auto_reg_params.get(group_fe)
@@ -114,14 +147,25 @@ def compute_autoreg_features(
             lag_list=params_group["lags"],
             ts_uid=params_group["groups"],
             date=date_str,
-        ).pipe(
-            pl_compute_moving_features,
-            target_col=target_col,
-            func_list=params_group["funcs"],
-            win_list=params_group["wins"],
-            shift_list=params_group["shifts"],
-            ts_uid=params_group["groups"],
-            date=date_str,
-            horizon=params_group["horizon"],
         )
+        if with_rols:
+            data = data.pipe(
+                pl_compute_moving_features,
+                target_col=target_col,
+                func_list=params_group["funcs"],
+                win_list=params_group["wins"],
+                shift_list=params_group["shifts"],
+                ts_uid=params_group["groups"],
+                date=date_str,
+                horizon=params_group["horizon"],
+            )
+        if with_delta:
+            data = data.pipe(
+                pl_compute_seq_delta_features,
+                target_col=target_col,
+                horizon=params_group["horizon"],
+                ts_uid=params_group["groups"],
+                date=date_str,
+                delta_list=params_group["delta"],
+            )
     return data
