@@ -10,26 +10,31 @@ import toml
 import sys
 import argparse
 
-sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
-
-from src.preprocessing.times import (
+from nostradamus.preprocessing.times import (
     from_day_to_time_fe,
     get_covid_table,
 )
-from attendance.src.preprocessing.quality import trim_timeseries, minimum_length_uid
-from attendance.src.models.forecast.chain import ChainForecaster
-from attendance.src.preprocessing.lags import get_significant_lags
-from attendance.src.preprocessing.times import get_basic_holidays
+from nostradamus.preprocessing.quality import trim_timeseries, minimum_length_uid
+from nostradamus.forecaster.chain import ChainForecaster
+from nostradamus.preprocessing.lags import get_significant_lags
+from nostradamus.preprocessing.times import get_basic_holidays
 
 # metrics of the competition.
-from attendance.src.project_utils import load_data
-from attendance.src.models.lgb_wrapper import GBTModel
+from attendance.experiment.project_utils import load_data
+from nostradamus.models.lgb_wrapper import GBTModel
+
+import sys
+from pathlib import Path
+
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 features = toml.load("data/features.toml")
 
 times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
-p = Path(features["ABS_DATA_PATH"])
 ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
@@ -53,7 +58,7 @@ if __name__ == "__main__":
     covid_fe = list(filter(lambda x: date_col not in x, covid_df.columns))
     exog = exog + holidays_fe + covid_fe
 
-    train_data, test_data, submission = load_data(p)
+    train_data, test_data, submission = load_data(project_root)
 
     test_data = (
         test_data.pipe(from_day_to_time_fe, time=date_col, frequency="day")
@@ -67,9 +72,7 @@ if __name__ == "__main__":
         .join(df_dates, how="left", on=[date_col])
         .join(
             covid_df.with_columns(
-                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias(
-                    "covid_weight"
-                )
+                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias("covid_weight")
             ),
             how="left",
             on=[date_col],
@@ -90,9 +93,7 @@ if __name__ == "__main__":
         ).alias("covid_weight")
     )
 
-    good_ts = minimum_length_uid(
-        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
-    )
+    good_ts = minimum_length_uid(train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2))
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
     left_term = train_data.select([date_col, ts_uid, "y"] + exog).with_columns(
@@ -108,9 +109,7 @@ if __name__ == "__main__":
     from copy import deepcopy
 
     significant_lags = get_significant_lags(train_data, date_col=date_col, target=y)
-    significant_lags = [
-        x for x in significant_lags if x <= macro_horizon and x % 7 == 0
-    ]
+    significant_lags = [x for x in significant_lags if x <= macro_horizon and x % 7 == 0]
     lags = deepcopy(significant_lags)
     win_list = [7, 14, 28, 56]
 
@@ -125,7 +124,7 @@ if __name__ == "__main__":
         )
 
     else:
-        from src.models.scikit_wrapper import ScikitWrapper
+        from nostradamus.models.scikit_wrapper import ScikitWrapper
         from sklearn.ensemble import RandomForestRegressor
 
         model_reg = ScikitWrapper(
@@ -181,7 +180,7 @@ if __name__ == "__main__":
             transform_win_size=28,
         )
         # display(test_data)
-        forecaster.fit(data=train_data, strategy=set_strategy)
+        forecaster.fit(data=train_data, strategy=set_strategy, optimize=False)
         test_data = (
             deepcopy(test_data)
             .select(["index", date_col, ts_uid])
@@ -191,10 +190,8 @@ if __name__ == "__main__":
                 on=[date_col, ts_uid],
             )
         )
-        (
-            test_data.fill_null(0).select(["index", "y_hat"]).rename({"y_hat": "y"})
-        ).write_csv(
-            f"attendance/out/submit/{set_strategy}_{transform_strategy}_chain_lgb.csv"
+        (test_data.fill_null(0).select(["index", "y_hat"]).rename({"y_hat": "y"})).write_csv(
+            project_root / f"out/submit/{set_strategy}_{transform_strategy}_chain_lgb.csv"
         )
 
         # save valid for evaluation purpose.
@@ -203,6 +200,4 @@ if __name__ == "__main__":
             {"y_hat": f"{set_strategy}_{transform_strategy}_chain_y_hat"}
         )
         display(metrics_out)
-        valid_out.write_csv(
-            f"attendance/out/{set_strategy}_{transform_strategy}_chain_lgb.csv"
-        )
+        valid_out.write_csv(project_root / f"out/{set_strategy}_{transform_strategy}_chain_lgb.csv")

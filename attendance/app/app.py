@@ -3,10 +3,20 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from utils import load_image
+import sys
+from pathlib import Path
+
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 # Set page layout as the first Streamlit command
 st.set_page_config(layout="wide")
+
+from attendance.app.utils import load_image, load_dataset
+
+train_data, test_data, submission = load_dataset(project_root)
 
 # CSS styling for cards with gradient colors and bold numbers
 st.markdown(
@@ -174,22 +184,16 @@ ax[0].fill_between(
     label="Confidence Interval",
 )
 anomalies = forecast_data[forecast_data["Anomaly"] == "Anomaly"]
-ax[0].scatter(
-    anomalies["Date"], anomalies["Sales"], color="red", s=100, label="Anomalies"
-)
+ax[0].scatter(anomalies["Date"], anomalies["Sales"], color="red", s=100, label="Anomalies")
 ax[0].set_title("Sales Report", fontsize=18, fontweight="bold")
 ax[0].set_xlabel("Date", fontsize=14)
 ax[0].set_ylabel("Sales", fontsize=14)
 ax[0].legend(fontsize=12)
 
 # Monthly Usage Stats (Density Plot)
-sns.histplot(
-    filtered_data["Quantity"], kde=True, stat="density", ax=ax[1], color="blue", bins=20
-)
+sns.histplot(filtered_data["Quantity"], kde=True, stat="density", ax=ax[1], color="blue", bins=20)
 mean_quantity = filtered_data["Quantity"].mean()
-ax[1].axvline(
-    mean_quantity, color="red", linestyle="--", label=f"Mean: {mean_quantity:.2f}"
-)
+ax[1].axvline(mean_quantity, color="red", linestyle="--", label=f"Mean: {mean_quantity:.2f}")
 ax[1].set_title("Monthly Usage Stats", fontsize=18, fontweight="bold")
 ax[1].set_xlabel("Quantity", fontsize=14)
 ax[1].set_ylabel("Density", fontsize=14)
@@ -199,14 +203,12 @@ plt.tight_layout()
 st.pyplot(fig)
 
 # Table for overdue items
-st.subheader("Overdue Items")
 st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
+st.header("Anomaly Report")
 if not overdue_data.empty:
     st.write(overdue_data)
 else:
     st.write("No overdue items for the selected ID.")
 st.markdown("</div>", unsafe_allow_html=True)
-
 # Footer
 st.markdown("---")
-st.write("Streamlit Dashboard Example")

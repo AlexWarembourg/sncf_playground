@@ -12,10 +12,10 @@ import optuna
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
 
-from attendance.src.preprocessing.lags import compute_autoreg_features
-from attendance.src.preprocessing.target_transform import TargetTransform
-from attendance.src.analysis.describe import timeseries_length
-from attendance.src.analysis.metrics import display_metrics
+from nostradamus.preprocessing.lags import compute_autoreg_features
+from nostradamus.preprocessing.target_transform import TargetTransform
+from nostradamus.analysis.describe import timeseries_length
+from nostradamus.analysis.metrics import display_metrics
 
 
 def parameters_tuning(
@@ -49,9 +49,7 @@ def parameters_tuning(
     """
     study = optuna.create_study(direction="minimize")
     # study.enqueue_trial(initial_params)
-    study.optimize(
-        tuning_objective, n_trials=n_trials, n_jobs=njobs, gc_after_trial=True
-    )
+    study.optimize(tuning_objective, n_trials=n_trials, n_jobs=njobs, gc_after_trial=True)
     print("Number of finished trials:", len(study.trials))
     print("Best trial:", study.best_trial.params)
     study_df = study.trials_dataframe()
@@ -92,8 +90,7 @@ class DirectForecaster:
             deepcopy(features_params), horizon=self.forecast_horizon
         )
         self.initial_trim = max(
-            max(self.features_params[ts_uid]["wins"])
-            + max(self.features_params[ts_uid]["shifts"]),
+            max(self.features_params[ts_uid]["wins"]) + max(self.features_params[ts_uid]["shifts"]),
             max(self.features_params[ts_uid]["lags"]),
         )
         self.strategy = None
@@ -133,9 +130,7 @@ class DirectForecaster:
             ), "Shape not match, that imply there's missing or foreign key in the dictionnary"
             # print(keys, intersct)
 
-    def update_params_dict(
-        self, params: Dict[str, Dict[str, List[Union[str, int]]]], horizon: int
-    ):
+    def update_params_dict(self, params: Dict[str, Dict[str, List[Union[str, int]]]], horizon: int):
         for key in params.keys():
             params[key]["horizon"] = params[key]["horizon"](horizon)
             params[key]["shifts"] = params[key]["shifts"](horizon)
@@ -148,17 +143,11 @@ class DirectForecaster:
         self.min_available_date = date_series.min()
         # suppose we need to predict timestep 30 to 60
         # that means we have a range from 30 to 60 and we must shift by 60 and our validation is also 60
-        self.start_valid = max_available_date - timedelta(
-            days=int(max(self.forecast_range))
-        )
+        self.start_valid = max_available_date - timedelta(days=int(max(self.forecast_range)))
         self.end_valid = max_available_date
         # forecast is de facto the max available date + min of the range and the max of the range
-        self.start_forecast = max_available_date + timedelta(
-            days=int(min(self.forecast_range) + 1)
-        )
-        self.end_forecast = max_available_date + timedelta(
-            days=int(max(self.forecast_range) + 1)
-        )
+        self.start_forecast = max_available_date + timedelta(days=int(min(self.forecast_range) + 1))
+        self.end_forecast = max_available_date + timedelta(days=int(max(self.forecast_range) + 1))
 
     def trim(self, data: polars_dataframe) -> polars_dataframe:
         trim_dt = self.min_available_date + timedelta(days=int(self.initial_trim))
@@ -170,15 +159,11 @@ class DirectForecaster:
         # retrieve max date from data
         train = data.filter(pl.col(self.date_str) < self.start_valid)
         valid = data.filter(
-            pl.col(self.date_str).is_between(
-                self.start_valid, self.end_valid, closed="both"
-            )
+            pl.col(self.date_str).is_between(self.start_valid, self.end_valid, closed="both")
         )
         return train, valid
 
-    def prepare(
-        self, data: polars_dataframe
-    ) -> Tuple[polars_dataframe, polars_dataframe]:
+    def prepare(self, data: polars_dataframe) -> Tuple[polars_dataframe, polars_dataframe]:
         self.uids = data[[self.ts_uid]].unique()
         # this is the maximal date available.
         self.set_date_scope(data[self.date_str].cast(pl.Date))
@@ -260,9 +245,7 @@ class DirectForecaster:
         model = deepcopy(model)
         forecaster_object = deepcopy(forecaster_object)
         optuna_params = {
-            "boosting_type": trial.suggest_categorical(
-                "boosting_type", ["gbdt", "dart"]
-            ),
+            "boosting_type": trial.suggest_categorical("boosting_type", ["gbdt", "dart"]),
             "objective": trial.suggest_categorical(
                 "objective", ["regression", "huber", "regression_l1", "quantile"]
             ),
@@ -271,20 +254,14 @@ class DirectForecaster:
                 "alpha",
                 [0.5],
             ),
-            "force_row_wise": trial.suggest_categorical(
-                "force_row_wise", [True, False]
-            ),
-            "learning_rate": trial.suggest_float(
-                "learning_rate", 0.005, 0.05, log=False
-            ),
+            "force_row_wise": trial.suggest_categorical("force_row_wise", [True, False]),
+            "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.05, log=False),
             "max_depth": trial.suggest_int("max_depth", 4, 15),
             "sub_row": trial.suggest_categorical("sub_row", [0.6, 0.7, 0.8, 1.0]),
             "bagging_freq": trial.suggest_categorical("bagging_freq", [1]),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 10.0, log=True),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 10.0, log=True),
-            "min_child_weight": trial.suggest_float(
-                "min_child_weight", 1e-3, 4, log=True
-            ),
+            "min_child_weight": trial.suggest_float("min_child_weight", 1e-3, 4, log=True),
             "num_iterations": trial.suggest_int(
                 "n_estimators",
                 50,
@@ -294,9 +271,7 @@ class DirectForecaster:
             "max_bins": trial.suggest_int("max_bins", 24, 1000),
             "min_data_in_bin": trial.suggest_int("min_data_in_bin", 25, 1000),
             "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 5, 1000),
-            "feature_fraction_seed": trial.suggest_categorical(
-                "feature_fraction_seed", [seed]
-            ),
+            "feature_fraction_seed": trial.suggest_categorical("feature_fraction_seed", [seed]),
             "bagging_seed": trial.suggest_categorical("bagging_seed", [seed]),
             "seed": trial.suggest_categorical("seed", [seed]),
             "verbose": trial.suggest_categorical("verbose", [-1]),
@@ -305,7 +280,7 @@ class DirectForecaster:
         forecaster_object.fit(train_data=train_data)
         return forecaster_object.evaluate()["rmse"].values[0]
 
-    def fit_global(self, train_data: polars_dataframe, optimize: bool = True) -> None:
+    def fit_global(self, train_data: polars_dataframe, optimize: bool = False) -> None:
         self.train, self.valid = self.prepare(train_data)
         # call model and fit with a validation set
         # model must have a quadruple fit method with an early stopping setting on the validation set.
@@ -343,7 +318,7 @@ class DirectForecaster:
         self,
         train_data: polars_dataframe,
         strategy: str = "global",
-        optimize: bool = True,
+        optimize: bool = False,
     ):
         if strategy == "global":
             self.fit_global(train_data)
@@ -385,13 +360,9 @@ class DirectForecaster:
                 return missing_df
             """
 
-    def predict_local(
-        self, x_test: Union[polars_dataframe, pandas_dataframe] = None
-    ) -> np.ndarray:
+    def predict_local(self, x_test: Union[polars_dataframe, pandas_dataframe] = None) -> np.ndarray:
         grouped_dataframe = x_test.group_by([self.ts_uid])
-        conditional_back = (
-            "threading" if x_test.select(self.ts_uid).n_unique() < 1000 else "loky"
-        )
+        conditional_back = "threading" if x_test.select(self.ts_uid).n_unique() < 1000 else "loky"
         predictions = Parallel(n_jobs=self.n_jobs, backend=conditional_back)(
             delayed(self.single_predict)(self.models_locals, key, subset_data)
             for key, subset_data in grouped_dataframe
@@ -416,9 +387,7 @@ class DirectForecaster:
             shape >= self.initial_trim
         ), f"the test length must contains at least {self.initial_trim} date observation to compute feature engineering"
         max_dt = x_test[self.date_str].max()
-        minimal_cut = max_dt - timedelta(
-            days=int(self.initial_trim + self.forecast_horizon)
-        )
+        minimal_cut = max_dt - timedelta(days=int(self.initial_trim + self.forecast_horizon))
         x_test = (
             x_test.filter(pl.col(self.date_str) >= minimal_cut)
             .pipe(
@@ -427,9 +396,7 @@ class DirectForecaster:
                 date_str=self.date_str,
                 auto_reg_params=self.features_params,
             )
-            .filter(
-                pl.col(self.date_str).is_between(self.start_forecast, self.end_forecast)
-            )
+            .filter(pl.col(self.date_str).is_between(self.start_forecast, self.end_forecast))
         )
         if self.strategy == "global":
             output = self.predict_global(x_test=x_test)
@@ -437,9 +404,7 @@ class DirectForecaster:
             output = self.predict_local(x_test=x_test)
         else:
             raise ValueError("Unknown Strategy")
-        output = self.target_transformer.inverse_transform(
-            output, target=self.output_name
-        )
+        output = self.target_transformer.inverse_transform(output, target=self.output_name)
         return output
 
     def make_future_dataframe(self, uids: List[str] = None):
@@ -450,16 +415,10 @@ class DirectForecaster:
         ).to_frame("date")
         # define future_df
         future_df = df_dates.join(
-            (
-                self.uids
-                if uids is None
-                else self.uids.filter(pl.col(self.ts_uid).is_in(uids))
-            ),
+            (self.uids if uids is None else self.uids.filter(pl.col(self.ts_uid).is_in(uids))),
             how="cross",
         )
-        future_df = future_df.with_columns(
-            pl.lit(np.nan).cast(pl.Float32).alias(self.target_str)
-        )
+        future_df = future_df.with_columns(pl.lit(np.nan).cast(pl.Float32).alias(self.target_str))
         return future_df
 
     def evaluate(self, return_output: bool = False):
@@ -467,18 +426,14 @@ class DirectForecaster:
             if self.strategy == "global":
                 hat = self.predict_global(x_test=self.valid)
                 y_hat = (
-                    self.target_transformer.inverse_transform(
-                        hat, target=self.output_name
-                    )
+                    self.target_transformer.inverse_transform(hat, target=self.output_name)
                     .select(self.output_name)
                     .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
                 y_real = (
-                    self.target_transformer.inverse_transform(
-                        hat, target=self.target_str
-                    )
+                    self.target_transformer.inverse_transform(hat, target=self.target_str)
                     .select(self.target_str)
                     .fill_null(0.0)
                     .to_numpy()
@@ -487,18 +442,14 @@ class DirectForecaster:
             elif self.strategy == "local":
                 hat = self.predict_local(x_test=self.valid)
                 y_hat = (
-                    self.target_transformer.inverse_transform(
-                        hat, target=self.output_name
-                    )
+                    self.target_transformer.inverse_transform(hat, target=self.output_name)
                     .select(self.output_name)
                     .fill_null(0.0)
                     .to_numpy()
                     .flatten()
                 )
                 y_real = (
-                    self.target_transformer.inverse_transform(
-                        hat, target=self.target_str
-                    )
+                    self.target_transformer.inverse_transform(hat, target=self.target_str)
                     .select(self.target_str)
                     .fill_null(0.0)
                     .to_numpy()

@@ -6,7 +6,7 @@ import polars as pl
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
 
-from src.models.forecast.direct import DirectForecaster
+from nostradamus.forecaster.direct import DirectForecaster
 
 
 class RecursiveForecaster:

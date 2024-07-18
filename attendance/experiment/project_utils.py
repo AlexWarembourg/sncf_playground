@@ -5,18 +5,20 @@ import numpy as np
 from datetime import timedelta
 
 import sys
+from pathlib import Path
 
-sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
-from attendance.src.preprocessing.quality import find_ts_outlier
+from nostradamus.preprocessing.quality import find_ts_outlier
 
 
 def forecast_to_submit(
     test, unique_id_col_name, date_col_name, submission_name, y_col, submission_file
 ):
-    test["index"] = (
-        test[date_col_name].astype(str) + "_" + test[unique_id_col_name].astype(str)
-    )
+    test["index"] = test[date_col_name].astype(str) + "_" + test[unique_id_col_name].astype(str)
     test["y"] = test[y_col].copy()
     out = test[["index", "y"]]
     submission_file.merge(out, how="left", on=["index"]).to_csv(
@@ -30,9 +32,7 @@ def submit_fcst(test_data, lgb_out, ts_uid):
         test_data.select(["index", "date", "station"])
         .with_columns(pl.col("date").cast(pl.Date))
         .join(
-            lgb_out.select(["y_hat", "date", "station"]).with_columns(
-                pl.col("date").cast(pl.Date)
-            ),
+            lgb_out.select(["y_hat", "date", "station"]).with_columns(pl.col("date").cast(pl.Date)),
             how="left",
             on=["date", "station"],
         )
@@ -40,23 +40,16 @@ def submit_fcst(test_data, lgb_out, ts_uid):
     )
 
     if submit["y_hat"].is_null().sum() > 0:
-        submit = submit.with_columns(
-            pl.col("y_hat").fill_null(pl.col("y_hat").mean().over(ts_uid))
-        )
+        submit = submit.with_columns(pl.col("y_hat").fill_null(pl.col("y_hat").mean().over(ts_uid)))
     assert submit["y_hat"].is_null().sum() == 0, "forecast col has null"
     submit = submit.rename({"y_hat": "y"})
     return submit[["index", "y"]]
 
 
 def load_data(p):
-    train_data = pl.read_csv(p / "train_f_x.csv")
-    test_data = pl.read_csv(p / "test_f_x_THurtzP.csv")
-    submission = pl.read_csv(p / "y_exemple_sncf_d9so9pm.csv").drop(columns="y")
-
-    max_dt_train = train_data["date"].max()
-    validation_dt = train_data["date"].str.to_datetime("%Y-%m-%d").max() - timedelta(
-        days=test_data.n_unique(subset=["date"])
-    )
+    train_data = pl.read_csv(p / "attendance/data/train_f_x.csv")
+    test_data = pl.read_csv(p / "attendance/data/test_f_x_THurtzP.csv")
+    submission = pl.read_csv(p / "attendance/data/y_exemple_sncf_d9so9pm.csv").drop(columns="y")
 
     train_data = (
         train_data.with_columns(
@@ -65,11 +58,9 @@ def load_data(p):
             pl.col("date").str.to_datetime("%Y-%m-%d"),
             # pl.when(pl.col("date") >= validation_dt).then(1).otherwise(0).alias("is_valid")
         )
-        .join(pl.read_csv(p / "y_train_sncf.csv"), on="index", how="inner")
+        .join(pl.read_csv(p / "attendance/data/y_train_sncf.csv"), on="index", how="inner")
         .with_columns(pl.col("y").alias("y_copy"))
         .pipe(find_ts_outlier, ts_uid="station", y="y", date_col="date")
-        # .filter(pl.col("not_outlier") == 1)
-        # .drop("not_outlier")
     )
 
     test_data = test_data.with_columns(

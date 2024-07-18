@@ -13,35 +13,38 @@ from copy import deepcopy
 from datetime import timedelta
 from sklearn.preprocessing import RobustScaler, MinMaxScaler
 
-
-sys.path.insert(
-    0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance"
-)
-
-from src.preprocessing.times import (
+from nostradamus.preprocessing.times import (
     from_day_to_time_fe,
     get_covid_table,
 )
-from src.preprocessing.quality import trim_timeseries, minimum_length_uid
-from src.models.forecast.direct import DirectForecaster
-from src.preprocessing.lags import get_significant_lags
-from src.preprocessing.times import get_basic_holidays
+from nostradamus.preprocessing.quality import trim_timeseries, minimum_length_uid
+from nostradamus.forecaster.direct import DirectForecaster
+from nostradamus.preprocessing.lags import get_significant_lags
+from nostradamus.preprocessing.times import get_basic_holidays
 
 # metrics of the competition.
-from src.project_utils import load_data
-from src.models.lgb_wrapper import GBTModel
+from attendance.experiment.project_utils import load_data
+from nostradamus.models.lgb_wrapper import GBTModel
+
+import sys
+from pathlib import Path
+
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
 
 features = toml.load("data/features.toml")
 
 times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
-p = Path(features["ABS_DATA_PATH"])
 ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
 flist = features["flist"]
 exog = ["job", "ferie", "vacances"] + times_cols
 in_dt = datetime.date(2017, 1, 1)
+
 parser = argparse.ArgumentParser()
 parser.add_argument("--strategy", default="global", required=True)
 parser.add_argument("--kanify", default=False, required=True)
@@ -61,7 +64,7 @@ if __name__ == "__main__":
     covid_fe = list(filter(lambda x: date_col not in x, covid_df.columns))
     exog = exog + holidays_fe + covid_fe
 
-    train_data, test_data, submission = load_data(p)
+    train_data, test_data, submission = load_data(project_root)
 
     test_data = (
         test_data.pipe(from_day_to_time_fe, time=date_col, frequency="day")
@@ -75,9 +78,7 @@ if __name__ == "__main__":
         .join(df_dates, how="left", on=[date_col])
         .join(
             covid_df.with_columns(
-                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias(
-                    "covid_weight"
-                )
+                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias("covid_weight")
             ),
             how="left",
             on=[date_col],
@@ -98,9 +99,7 @@ if __name__ == "__main__":
         ).alias("covid_weight")
     )
 
-    good_ts = minimum_length_uid(
-        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
-    )
+    good_ts = minimum_length_uid(train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2))
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
     left_term = train_data.select([date_col, ts_uid, "y"] + exog).with_columns(
@@ -114,10 +113,8 @@ if __name__ == "__main__":
 
     # define params
     significant_lags = get_significant_lags(train_data, date_col=date_col, target=y)
-    significant_lags = [
-        x for x in significant_lags if x <= macro_horizon and x % 7 == 0
-    ]
-    from src.models.mlp_wrapper import TorchWrapper
+    significant_lags = [x for x in significant_lags if x <= macro_horizon and x % 7 == 0]
+    from nostradamus.models.mlp_wrapper import TorchWrapper
 
     num_cols = []
     cat_cols = ["week", "month", "day_of_week", "job", "ferie", "vacances"]
@@ -196,7 +193,7 @@ if __name__ == "__main__":
             .rename({"y_hat": "y"})
         )
         test_output.fill_null(0).write_csv(
-            f"out/submit/{set_strategy}_{transform_strategy}_direct_mlp.csv"
+            project_root / f"out/submit/{set_strategy}_{transform_strategy}_direct_mlp.csv"
         )
 
         # write valid for evaluation purpose.
@@ -232,4 +229,6 @@ if __name__ == "__main__":
             valid_out = dir_forecaster.target_transformer.inverse_transform(
                 valid_out, target=dir_forecaster.target_str
             )
-        valid_out.write_csv(f"out/{set_strategy}_{transform_strategy}_direct_mlp.csv")
+        valid_out.write_csv(
+            project_root / f"out/{set_strategy}_{transform_strategy}_direct_mlp.csv"
+        )

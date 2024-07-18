@@ -17,28 +17,29 @@ import sys
 import argparse
 from copy import deepcopy
 
-
-sys.path.insert(
-    0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance"
-)
-
-
-from src.models.neural_wrapper import NeuralWrapper
-from src.project_utils import load_data
-from src.preprocessing.quality import trim_timeseries
-from src.preprocessing.times import from_day_to_time_fe
-from src.preprocessing.quality import minimum_length_uid
+from nostradamus.models.neural_wrapper import NeuralWrapper
+from attendance.experiment.project_utils import load_data
+from nostradamus.preprocessing.quality import trim_timeseries
+from nostradamus.preprocessing.times import from_day_to_time_fe
+from nostradamus.preprocessing.quality import minimum_length_uid
 
 from datetime import datetime, timedelta
 import polars as pl
 import toml
 from pathlib import Path
 
+import sys
+from pathlib import Path
+
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 features = toml.load(
     r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance\data\features.toml"
 )
 macro_horizon = features["MACRO_HORIZON"]
-p = Path(features["ABS_DATA_PATH"])
 ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
@@ -54,7 +55,7 @@ np.random.seed(SEED)
 
 if __name__ == "__main__":
 
-    train_data, test_data, submission = load_data(p)
+    train_data, test_data, submission = load_data(project_root)
 
     # some series may be to short to "validate" so we'll cut throw them for evaluation part
     validate_series = minimum_length_uid(
@@ -66,24 +67,36 @@ if __name__ == "__main__":
     train_data = train_data.filter(pl.col(ts_uid).is_in(validate_series))
     n_series = train_data[ts_uid].n_unique()
 
+    time_consumer = [
+        TimesNet(
+            h=macro_horizon,  # Horizon
+            input_size=round(1.5 * macro_horizon),  # Length of input window
+            max_steps=n_step,  # Training iterations
+            top_k=12,  # Number of periods (for FFT).
+            num_kernels=4,  # Number of kernels for Inception module
+            batch_size=batch_no_serie,  # Number of time series per batch
+            windows_batch_size=win_batch_size,  # Number of windows per batch
+            learning_rate=0.003,  # Learning rate
+            scaler_type="robust",
+            loss=MAE(),
+            futr_exog_list=exog,  # Future exogenous variables
+            random_seed=SEED,
+        ),
+        iTransformer(
+            h=macro_horizon,
+            batch_size=batch_no_serie,
+            scaler_type="robust",
+            input_size=2 * macro_horizon,
+            n_series=n_series,
+            loss=MAE(),
+            max_steps=n_step,
+            early_stop_patience_steps=5,
+            random_seed=SEED,
+        ),
+    ]
+
     sf = NeuralForecast(
         [
-            """
-            TimesNet(
-                h=macro_horizon,  # Horizon
-                input_size=round(1.5 * macro_horizon),  # Length of input window
-                max_steps=n_step,  # Training iterations
-                top_k=12,  # Number of periods (for FFT).
-                num_kernels=4,  # Number of kernels for Inception module
-                batch_size=batch_no_serie,  # Number of time series per batch
-                windows_batch_size=win_batch_size,  # Number of windows per batch
-                learning_rate=0.003,  # Learning rate
-                scaler_type="robust",
-                loss=MAE(),
-                futr_exog_list=exog,  # Future exogenous variables
-                random_seed=SEED,
-            ),
-            """
             NHITS(
                 h=macro_horizon,
                 max_steps=n_step,
@@ -134,19 +147,6 @@ if __name__ == "__main__":
                 futr_exog_list=exog,  # time based with future known
                 random_seed=SEED,
             ),
-            """
-            iTransformer(
-                h=macro_horizon,
-                batch_size=batch_no_serie,
-                scaler_type="robust",
-                input_size=2 * macro_horizon,
-                n_series=n_series,
-                loss=MAE(),
-                max_steps=n_step,
-                early_stop_patience_steps=5,
-                random_seed=SEED,
-            ),
-            """
         ],
         freq="1d",
     )
@@ -187,7 +187,7 @@ if __name__ == "__main__":
         train_data,
         val_size=macro_horizon,
     )
-    valid_forecast.write_csv("attendance/out/neural_validation.csv")
+    valid_forecast.write_csv("out/neural_validation.csv")
     print(output_metrics)
 
     test_forecast = nf_base.forecast(
@@ -197,4 +197,4 @@ if __name__ == "__main__":
             from_day_to_time_fe, time="ds", frequency="day"
         ),
     )
-    test_forecast.write_csv("attendance/out/submit/neural_test_set.csv")
+    test_forecast.write_csv("out/submit/neural_test_set.csv")

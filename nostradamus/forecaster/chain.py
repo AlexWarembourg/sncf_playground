@@ -7,10 +7,10 @@ from joblib import Parallel, delayed
 
 import polars as pl
 from copy import deepcopy
-from attendance.src.models.forecast.direct import DirectForecaster
+from nostradamus.forecaster.direct import DirectForecaster
 from pandas import DataFrame as pandas_dataframe
 from polars import DataFrame as polars_dataframe
-from attendance.src.analysis.metrics import display_metrics
+from nostradamus.analysis.metrics import display_metrics
 
 
 class ChainForecaster:
@@ -89,9 +89,7 @@ class ChainForecaster:
     def backtest(self, data):
         pass
 
-    def predict(
-        self, x_test: Union[polars_dataframe, pandas_dataframe] = None
-    ) -> np.ndarray:
+    def predict(self, x_test: Union[polars_dataframe, pandas_dataframe] = None) -> np.ndarray:
         reconstruct_test = []
         for chain_model in self.models_out:
             reconstruct_test.append(

@@ -12,29 +12,32 @@ import argparse
 from copy import deepcopy
 from datetime import timedelta
 
-
-sys.path.insert(0, r"C:\Users\N000193384\Documents\sncf_project\sncf_playground")
-
-from attendance.src.preprocessing.times import (
+from nostradamus.preprocessing.times import (
     from_day_to_time_fe,
     get_covid_table,
 )
-from attendance.src.preprocessing.quality import trim_timeseries, minimum_length_uid
-from attendance.src.models.forecast.direct import DirectForecaster
-from attendance.src.preprocessing.lags import get_significant_lags
-from attendance.src.preprocessing.times import get_basic_holidays
+from nostradamus.preprocessing.quality import trim_timeseries, minimum_length_uid
+from nostradamus.forecaster.direct import DirectForecaster
+from nostradamus.preprocessing.lags import get_significant_lags
+from nostradamus.preprocessing.times import get_basic_holidays
 
 # metrics of the competition.
-from attendance.src.project_utils import load_data
-from attendance.src.models.lgb_wrapper import GBTModel
+from attendance.experiment.project_utils import load_data
+from nostradamus.models.lgb_wrapper import GBTModel
 
-features = toml.load(
-    r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\attendance\data\features.toml"
-)
+import sys
+from pathlib import Path
+
+
+# Ensure the project root is in the PYTHONPATH
+project_root = Path(__file__).resolve().parents[2]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+features = toml.load("data/features.toml")
 
 times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
-p = Path(features["ABS_DATA_PATH"])
 ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
@@ -49,7 +52,7 @@ if __name__ == "__main__":
     flag = parser.parse_args()
     set_strategy = flag.strategy
     params_file_name = "params" if set_strategy == "global" else "individual_params"
-    with open(f"attendance/data/{params_file_name}.json", "rb") as stream:
+    with open(f"data/{params_file_name}.json", "rb") as stream:
         params_q = json.load(stream)
 
     covid_df = get_covid_table(2015, 2024)
@@ -58,7 +61,7 @@ if __name__ == "__main__":
     covid_fe = list(filter(lambda x: date_col not in x, covid_df.columns))
     exog = exog + holidays_fe + covid_fe
 
-    train_data, test_data, submission = load_data(p)
+    train_data, test_data, submission = load_data(project_root)
 
     test_data = (
         test_data.pipe(from_day_to_time_fe, time=date_col, frequency="day")
@@ -72,9 +75,7 @@ if __name__ == "__main__":
         .join(df_dates, how="left", on=[date_col])
         .join(
             covid_df.with_columns(
-                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias(
-                    "covid_weight"
-                )
+                pl.lit(np.where(np.any(covid_df != 0, axis=1), 0, 1)).alias("covid_weight")
             ),
             how="left",
             on=[date_col],
@@ -95,9 +96,7 @@ if __name__ == "__main__":
         ).alias("covid_weight")
     )
 
-    good_ts = minimum_length_uid(
-        train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2)
-    )
+    good_ts = minimum_length_uid(train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2))
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
     # test.
     left_term = train_data.select([date_col, ts_uid, "y"] + exog).with_columns(
@@ -111,9 +110,7 @@ if __name__ == "__main__":
 
     # define params
     significant_lags = get_significant_lags(train_data, date_col=date_col, target=y)
-    significant_lags = [
-        x for x in significant_lags if x <= macro_horizon and x % 7 == 0
-    ]
+    significant_lags = [x for x in significant_lags if x <= macro_horizon and x % 7 == 0]
 
     if set_strategy == "global":
         model_reg = GBTModel(
@@ -126,7 +123,7 @@ if __name__ == "__main__":
         )
 
     else:
-        from src.models.scikit_wrapper import ScikitWrapper
+        from nostradamus.models.scikit_wrapper import ScikitWrapper
         from sklearn.ensemble import RandomForestRegressor
 
         model_reg = ScikitWrapper(
@@ -161,23 +158,6 @@ if __name__ == "__main__":
         }
     }
 
-    """        
-    "ts_uid_dow": {
-            "groups": [ts_uid, "day_of_week"],
-            "horizon": lambda horizon: np.int32(np.ceil(horizon / 7) + 1),
-            "wins": np.array([4, 12]),
-            "shifts": lambda horizon: np.int32(
-                [
-                    np.ceil(horizon / 7) + 1,
-                    np.ceil(horizon / 7) + round((macro_horizon / 4)),
-                ]
-            ),
-            "lags": lambda horizon: np.arange(1, 7) + np.ceil(horizon / 7) + 1,
-            "funcs": np.array(flist),
-            "delta": [(2, 2), (2, 4), (4, 4)],
-        },
-    """
-
     for transform_strategy in [
         "rolling_zscore",
         "shiftn",
@@ -205,7 +185,7 @@ if __name__ == "__main__":
             transform_win_size=28,
         )
         # fit model through the wrapper
-        dir_forecaster.fit(deepcopy(train_data), strategy=set_strategy, optimize=True)
+        dir_forecaster.fit(deepcopy(train_data), strategy=set_strategy, optimize=False)
         display(dir_forecaster.evaluate())
         name_out = dir_forecaster.output_name
         # and forecast test.
@@ -224,7 +204,7 @@ if __name__ == "__main__":
             .rename({"y_hat": "y"})
         )
         test_output.fill_null(0).write_csv(
-            f"attendance/out/submit/{set_strategy}_{transform_strategy}_direct_lgb.csv"
+            project_root / f"out/submit/{set_strategy}_{transform_strategy}_direct_lgb.csv"
         )
 
         # write valid for evaluation purpose.
@@ -261,5 +241,5 @@ if __name__ == "__main__":
                 valid_out, target=dir_forecaster.target_str
             )
         valid_out.write_csv(
-            f"attendance/out/{set_strategy}_{transform_strategy}_direct_lgb.csv"
+            project_root / f"out/{set_strategy}_{transform_strategy}_direct_lgb.csv"
         )

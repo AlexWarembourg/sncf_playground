@@ -3,11 +3,12 @@ from typing import Any, Dict, Tuple
 import io
 from pathlib import Path
 
-import pandas as pd
+import polars as pl
 import requests
 import streamlit as st
 import toml
 from PIL import Image
+from attendance.experiment.project_utils import load_data
 
 
 def get_project_root() -> str:
@@ -21,8 +22,8 @@ def get_project_root() -> str:
     return str(Path(__file__).parent.parent.parent)
 
 
-@st.cache(suppress_st_warning=True, ttl=300)
-def load_dataset(file: str, load_options: Dict[Any, Any]) -> pd.DataFrame:
+@st.cache_data(ttl=300)
+def load_dataset(project_root) -> pl.DataFrame:
     """Loads dataset from user's file system as a pandas dataframe.
 
     Parameters
@@ -38,7 +39,7 @@ def load_dataset(file: str, load_options: Dict[Any, Any]) -> pd.DataFrame:
         Loaded dataset.
     """
     try:
-        return pd.read_csv(file, sep=load_options["separator"])
+        return load_data(project_root)
     except:
         st.error(
             "This file can't be converted into a dataframe. Please import a csv file with a valid separator."
@@ -46,7 +47,6 @@ def load_dataset(file: str, load_options: Dict[Any, Any]) -> pd.DataFrame:
         st.stop()
 
 
-@st.cache(allow_output_mutation=True, ttl=300)
 def load_config(
     config_streamlit_filename: str,
     config_instructions_filename: str,
@@ -82,7 +82,6 @@ def load_config(
     return dict(config_streamlit), dict(config_instructions), dict(config_readme)
 
 
-@st.cache(ttl=300)
 def load_image(image_name: str) -> Image:
     """Displays an image.
 

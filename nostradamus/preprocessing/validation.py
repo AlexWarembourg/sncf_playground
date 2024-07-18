@@ -10,7 +10,7 @@ def freeze_validation_set(
 ) -> pl.DataFrame:
     max_dt = df[date].max()
     cut = max_dt - timedelta(days=val_size)
-    valid = df.filter(pl.col(date) > cut)  # .select([ts_uid, date, target])
+    valid = df.filter(pl.col(date) > cut)
     if return_train:
         train = df.filter(pl.col(date) <= cut)
         return train, valid

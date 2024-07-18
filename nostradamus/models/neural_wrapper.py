@@ -1,5 +1,5 @@
 from typing import List, Union, Dict, Tuple
-from src.analysis.metrics import display_metrics
+from nostradamus.analysis.metrics import display_metrics
 
 import polars as pl
 from datetime import datetime, timedelta

@@ -55,14 +55,10 @@ def find_ts_outlier(
     return data
 
 
-def trim_timeseries(
-    full_data: pl.DataFrame, target: str, uid: str, time: str
-) -> pl.DataFrame:
+def trim_timeseries(full_data: pl.DataFrame, target: str, uid: str, time: str) -> pl.DataFrame:
     # Calculate the true start dates
     true_start = (
-        full_data.filter(pl.col(target) > 0)
-        .group_by(uid)
-        .agg([pl.col(time).min().alias("min_dt")])
+        full_data.filter(pl.col(target) > 0).group_by(uid).agg([pl.col(time).min().alias("min_dt")])
     )
 
     # Merge the true start dates back into the full dataset
