@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import polars as pl
 import matplotlib.pyplot as plt
 import seaborn as sns
 import sys
@@ -16,7 +17,8 @@ st.set_page_config(layout="wide")
 
 from attendance.app.utils import load_image, load_dataset
 
-train_data, test_data, submission = load_dataset(project_root)
+data = load_dataset(project_root)
+print("dataset has been loaded")
 
 # CSS styling for cards with gradient colors and bold numbers
 st.markdown(
@@ -67,59 +69,18 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Sample data
-np.random.seed(42)
-historical_data = pd.DataFrame(
-    {
-        "Date": pd.date_range(start="1/1/2023", periods=180, freq="D"),
-        "Sales": np.random.randint(100, 500, 180),
-        "Quantity": np.random.randint(20, 100, 180),
-        "ID": np.random.choice(["A", "B", "C"], 180),
-        "Status": np.random.choice(["On Time", "Overdue"], 180),
-    }
-)
-historical_data["Type"] = "Historical"
-historical_data["Lower CI"] = np.nan
-historical_data["Upper CI"] = np.nan
-historical_data["Anomaly"] = "Normal"
-
-# Forecast data
-forecast_dates = pd.date_range(start="7/1/2023", periods=30, freq="D")
-forecast_sales = np.random.randint(100, 500, 30)
-forecast_confidence_interval = np.random.randint(50, 100, 30)
-
-forecast_data = pd.DataFrame(
-    {
-        "Date": forecast_dates,
-        "Sales": forecast_sales,
-        "Lower CI": forecast_sales - forecast_confidence_interval,
-        "Upper CI": forecast_sales + forecast_confidence_interval,
-        "Type": "Forecast",
-    }
-)
-
-# Flag anomalies in the forecast data
-forecast_data["Anomaly"] = np.where(
-    (forecast_data["Sales"] > forecast_data["Upper CI"])
-    | (forecast_data["Sales"] < forecast_data["Lower CI"]),
-    "Anomaly",
-    "Normal",
-)
-
-# Combine historical and forecast data
-data = pd.concat([historical_data, forecast_data])
 
 # Sidebar content
 st.sidebar.image(load_image("logo.png"), use_column_width=True)  # Add your logo file
 st.sidebar.markdown("## Webapp Goal")
 st.sidebar.markdown(
-    "This dashboard provides an overview of sales and usage statistics for different product IDs. Select a unique ID from the dropdown below to filter the data and view overdue items."
+    "This dashboard provides an overview of y and usage statistics for different product IDs. Select a unique ID from the dropdown below to filter the data and view overdue items."
 )
-unique_id = st.sidebar.selectbox("Select Unique ID", data["ID"].unique())
+unique_id = st.sidebar.selectbox("Select Unique ID", data["station"].unique())
 
 # Filter data based on selected unique ID
-filtered_data = data[data["ID"] == unique_id]
-overdue_data = filtered_data[filtered_data["Status"] == "Overdue"]
+filtered_data = data.filter(pl.col("station") == unique_id)
+overdue_data = data.filter(pl.col("anomaly") == "anomaly")
 
 # Header
 st.title("Dashboard")
@@ -159,43 +120,43 @@ st.markdown("---")
 # Plotting with Matplotlib and Seaborn
 fig, ax = plt.subplots(1, 2, figsize=(18, 4))
 
-# Sales Report
-historical_data = filtered_data[filtered_data["Type"] == "Historical"]
-forecast_data = filtered_data[filtered_data["Type"] == "Forecast"]
+# y Report
+historical_data = filtered_data.filter(pl.col("type") == "historical")
+forecast_data = filtered_data.filter(pl.col("type") == "forecast")
 
 ax[0].plot(
-    historical_data["Date"],
-    historical_data["Sales"],
-    label="Historical Sales",
+    historical_data["date"],
+    historical_data["y"],
+    label="Historical y",
     color="blue",
 )
 ax[0].plot(
-    forecast_data["Date"],
-    forecast_data["Sales"],
-    label="Forecast Sales",
+    forecast_data["date"],
+    forecast_data["y_hat"],
+    label="Forecast",
     color="orange",
 )
 ax[0].fill_between(
-    forecast_data["Date"],
-    forecast_data["Lower CI"],
-    forecast_data["Upper CI"],
+    forecast_data["date"],
+    forecast_data["lower_bound"],
+    forecast_data["upper_bound"],
     color="red",
     alpha=0.5,
     label="Confidence Interval",
 )
-anomalies = forecast_data[forecast_data["Anomaly"] == "Anomaly"]
-ax[0].scatter(anomalies["Date"], anomalies["Sales"], color="red", s=100, label="Anomalies")
-ax[0].set_title("Sales Report", fontsize=18, fontweight="bold")
-ax[0].set_xlabel("Date", fontsize=14)
-ax[0].set_ylabel("Sales", fontsize=14)
+anomalies = forecast_data.filter(pl.col("anomaly") == "anomaly")
+ax[0].scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies")
+ax[0].set_title("y Report", fontsize=18, fontweight="bold")
+ax[0].set_xlabel("date", fontsize=14)
+ax[0].set_ylabel("y", fontsize=14)
 ax[0].legend(fontsize=12)
 
 # Monthly Usage Stats (Density Plot)
-sns.histplot(filtered_data["Quantity"], kde=True, stat="density", ax=ax[1], color="blue", bins=20)
-mean_quantity = filtered_data["Quantity"].mean()
-ax[1].axvline(mean_quantity, color="red", linestyle="--", label=f"Mean: {mean_quantity:.2f}")
+sns.histplot(filtered_data["y"], kde=True, stat="density", ax=ax[1], color="blue", bins=20)
+mean_y = filtered_data["y"].mean()
+ax[1].axvline(mean_y, color="red", linestyle="--", label=f"Mean: {mean_y:.2f}")
 ax[1].set_title("Monthly Usage Stats", fontsize=18, fontweight="bold")
-ax[1].set_xlabel("Quantity", fontsize=14)
+ax[1].set_xlabel("y", fontsize=14)
 ax[1].set_ylabel("Density", fontsize=14)
 ax[1].legend(fontsize=12)
 
@@ -204,7 +165,7 @@ st.pyplot(fig)
 
 # Table for overdue items
 st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
-st.header("Anomaly Report")
+st.header("anomaly Report")
 if not overdue_data.empty:
     st.write(overdue_data)
 else:

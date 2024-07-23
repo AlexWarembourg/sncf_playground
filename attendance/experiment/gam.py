@@ -22,6 +22,7 @@ times_cols = features["times_cols"]
 macro_horizon = features["MACRO_HORIZON"]
 
 from nostradamus.preprocessing.quality import find_ts_outlier
+from nostradamus.preprocessing.times import from_day_to_time_fe
 from nostradamus.models.linear_baseline import FLinear
 from attendance.experiment.project_utils import load_data
 
@@ -53,8 +54,11 @@ if __name__ == "__main__":
         train_data, ts_uid=ts_uid, y=y, date_col=date_col, window_size=90
     ).filter(pl.col("not_outlier") == 1)
 
+    train_data.pipe(from_day_to_time_fe, time=date_col, frequency="day")
+    test_data.pipe(from_day_to_time_fe, time=date_col, frequency="day")
+
     ll = FLinear(
-        features=["job", "ferie", "vacances"],
+        features=["job", "ferie", "vacances"] + times_cols,
         target=y,
         ts_uid=ts_uid,
         use_gam=True,
@@ -88,7 +92,7 @@ if __name__ == "__main__":
         target=y,
         ts_uid=ts_uid,
         use_gam=True,
-        ndays=364 * 2,
+        ndays=364 * 4,
         horizon=181,
         forecast_end_dt=val["date"].max(),
     )

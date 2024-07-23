@@ -192,7 +192,9 @@ class DirectForecaster:
         self.model.features = self.features
         return train, valid
 
-    def fit_local(self, train_data: polars_dataframe, optimize: bool = True) -> None:
+    def fit_local(
+        self, train_data: polars_dataframe, optimize: bool = True, n_trials: int = 15
+    ) -> None:
         except_uid = (
             timeseries_length(train_data, ts_uid=self.ts_uid, date=self.date_str)
             .filter(pl.col("date") <= self.initial_trim)
@@ -210,6 +212,8 @@ class DirectForecaster:
                 valid_x=val,
                 valid_y=val.select(self.target_str),
                 return_object=True,
+                optimize=optimize,
+                n_trials=n_trials,
             )
             for (_, tr), (_, val) in tqdm(
                 zip(
@@ -280,50 +284,32 @@ class DirectForecaster:
         forecaster_object.fit(train_data=train_data)
         return forecaster_object.evaluate()["rmse"].values[0]
 
-    def fit_global(self, train_data: polars_dataframe, optimize: bool = False) -> None:
+    def fit_global(
+        self, train_data: polars_dataframe, optimize: bool = False, n_trials: int = 50
+    ) -> None:
         self.train, self.valid = self.prepare(train_data)
         # call model and fit with a validation set
         # model must have a quadruple fit method with an early stopping setting on the validation set.
-        if not optimize:
-            self.model.fit(
-                train_x=self.train,
-                train_y=self.train.select(self.target_str),
-                valid_x=self.valid,
-                valid_y=self.valid.select(self.target_str),
-            )
-        else:
-            func = lambda trial: self.objective(
-                model=self.model,
-                forecaster_object=self,
-                train_data=train_data,
-                trial=trial,
-                seed=12345,
-            )
-            self.study_df, self.best_params = parameters_tuning(
-                tuning_objective=func,
-                n_trials=10,
-                initial_params={},
-                njobs=os.cpu_count() - 5,
-            )
-            self.model.params = self.best_params
-
-            self.model.fit(
-                train_x=self.train,
-                train_y=self.train.select(self.target_str),
-                valid_x=self.valid,
-                valid_y=self.valid.select(self.target_str),
-            )
+        self.model.fit(
+            train_x=self.train,
+            train_y=self.train.select(self.target_str),
+            valid_x=self.valid,
+            valid_y=self.valid.select(self.target_str),
+            tune=optimize,
+            n_trials=n_trials,
+        )
 
     def fit(
         self,
         train_data: polars_dataframe,
         strategy: str = "global",
         optimize: bool = False,
+        n_trials: int = 50,
     ):
         if strategy == "global":
-            self.fit_global(train_data)
+            self.fit_global(train_data, optimize=optimize, n_trials=n_trials)
         elif strategy == "local":
-            self.fit_local(train_data)
+            self.fit_local(train_data, optimize=optimize, n_trials=n_trials)
         else:
             raise ValueError("Unknown Strategy")
         self.strategy = strategy

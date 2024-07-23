@@ -44,7 +44,7 @@ ts_uid = features["ts_uid"]
 date_col = features["date_col"]
 y = features["y"]
 times_cols = features["times_cols"]
-n_step = 1200
+n_step = 1000
 batch_no_serie = 548
 win_batch_size = batch_no_serie * 5
 SEED = 777
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         train_data,
         uid=ts_uid,
         time=date_col,
-        min_length=round(macro_horizon * 1.25),
+        min_length=round(macro_horizon * 1.3),
     )
     train_data = train_data.filter(pl.col(ts_uid).is_in(validate_series))
     n_series = train_data[ts_uid].n_unique()
@@ -72,7 +72,7 @@ if __name__ == "__main__":
             h=macro_horizon,  # Horizon
             input_size=round(1.5 * macro_horizon),  # Length of input window
             max_steps=n_step,  # Training iterations
-            top_k=12,  # Number of periods (for FFT).
+            top_k=7,  # Number of periods (for FFT).
             num_kernels=4,  # Number of kernels for Inception module
             batch_size=batch_no_serie,  # Number of time series per batch
             windows_batch_size=win_batch_size,  # Number of windows per batch
@@ -187,7 +187,7 @@ if __name__ == "__main__":
         train_data,
         val_size=macro_horizon,
     )
-    valid_forecast.write_csv("out/neural_validation.csv")
+    valid_forecast.write_csv(project_root / "out/neural_validation.csv")
     print(output_metrics)
 
     test_forecast = nf_base.forecast(
@@ -197,4 +197,4 @@ if __name__ == "__main__":
             from_day_to_time_fe, time="ds", frequency="day"
         ),
     )
-    test_forecast.write_csv("out/submit/neural_test_set.csv")
+    test_forecast.write_csv(project_root / "out/submit/neural_test_set.csv")

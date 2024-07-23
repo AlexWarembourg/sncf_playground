@@ -185,7 +185,7 @@ if __name__ == "__main__":
             transform_win_size=28,
         )
         # fit model through the wrapper
-        dir_forecaster.fit(deepcopy(train_data), strategy=set_strategy, optimize=False)
+        dir_forecaster.fit(deepcopy(train_data), strategy=set_strategy, optimize=True, n_trials=50)
         display(dir_forecaster.evaluate())
         name_out = dir_forecaster.output_name
         # and forecast test.

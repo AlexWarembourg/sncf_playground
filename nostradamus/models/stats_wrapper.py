@@ -21,7 +21,7 @@ class StatsBaseline:
         forecast_horizon: int,
         fill_strategy: str = "forward",
         frequency: str = "1d",
-        levels: List[int] = [95],
+        levels: List[int] = [99],
         conformalised: bool = False,
         n_conformalised_win: int = 2,
         fitted: bool = False,
@@ -154,7 +154,7 @@ class StatsBaseline:
                 Y_df.filter(~pl.col("unique_id").is_in(allowed_uid))
                 .select(pl.col("unique_id").unique())
                 .to_numpy()
-                .to_list()
+                .tolist()
             )
 
         forecasts_df = (

@@ -42,7 +42,14 @@ class ChainForecaster:
         self.transform_strategy = transform_strategy
         self.transform_win_size = transform_win_size
 
-    def fit_single(self, chain_pieces: List[int], data: pl.DataFrame, strategy: str):
+    def fit_single(
+        self,
+        data: pl.DataFrame,
+        chain_pieces: List[int],
+        strategy: str,
+        optimize: bool = False,
+        n_trials: int = 10,
+    ):
         forecaster = DirectForecaster(
             model=deepcopy(self.model),
             ts_uid=self.ts_uid,
@@ -54,14 +61,26 @@ class ChainForecaster:
             transform_win_size=self.transform_win_size,
             transform_strategy=self.transform_strategy,
         )
-        forecaster.fit(data, strategy=strategy)
+        forecaster.fit(data, strategy=strategy, optimize=optimize, n_trials=n_trials)
         return forecaster
 
-    def fit(self, data, strategy: str = "global"):
+    def fit(
+        self,
+        data: pl.DataFrame,
+        strategy: str = "global",
+        optimize: bool = False,
+        n_trials: int = 25,
+    ) -> None:
         with Parallel(n_jobs=self.n_jobs) as parralel:
             delayed_func = delayed(self.fit_single)
             self.models_out = parralel(
-                delayed_func(chain_pieces=pieces, data=data, strategy=strategy)
+                delayed_func(
+                    chain_pieces=pieces,
+                    data=data,
+                    strategy=strategy,
+                    optimize=optimize,
+                    n_trials=n_trials,
+                )
                 for pieces in tqdm(self.chains)
             )
         self.fitted = True

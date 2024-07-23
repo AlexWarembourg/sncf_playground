@@ -64,7 +64,7 @@ forecast_stats_base = StatsBaseline(
     forecast_horizon=macro_horizon,
     fill_strategy="forward",
     frequency="1d",
-    levels=[95],
+    levels=[99],
     conformalised=True,
     fitted=False,
 )

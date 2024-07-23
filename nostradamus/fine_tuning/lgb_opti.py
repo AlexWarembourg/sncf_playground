@@ -56,9 +56,7 @@ def objective(
         "max_bins": trial.suggest_int("max_bins", 24, 1000),
         "min_data_in_bin": trial.suggest_int("min_data_in_bin", 25, 1000),
         "min_data_in_leaf": trial.suggest_int("min_data_in_leaf", 5, 1000),
-        "feature_fraction_seed": trial.suggest_categorical(
-            "feature_fraction_seed", [seed]
-        ),
+        "feature_fraction_seed": trial.suggest_categorical("feature_fraction_seed", [seed]),
         "bagging_seed": trial.suggest_categorical("bagging_seed", [seed]),
         "seed": trial.suggest_categorical("seed", [seed]),
         "verbose": trial.suggest_categorical("verbose", [-1]),
