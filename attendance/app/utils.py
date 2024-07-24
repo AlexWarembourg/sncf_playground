@@ -6,6 +6,7 @@ from pathlib import Path
 import polars as pl
 import requests
 import streamlit as st
+from datetime import timedelta
 import numpy as np
 import toml
 from PIL import Image
@@ -42,8 +43,13 @@ def load_dataset(project_root) -> pl.DataFrame:
     """
     try:
         train_data, _, _ = load_data(project_root)
+        # cut older obs
+        train_data = train_data.filter(
+            pl.col("date").cast(pl.Date)
+            >= pl.col("date").cast(pl.Date).min() + timedelta(days=364 * 2)
+        )
 
-        cols = ["HoltWinters", "HoltWinters-lo-95", "HoltWinters-hi-95"]
+        cols = ["HoltWinters", "HoltWinters-lo-99", "HoltWinters-hi-99"]
         statsmodel_valid = (
             pl.read_csv(
                 project_root / "out/nixtla_validation.csv", separator=",", infer_schema_length=1000
@@ -55,7 +61,7 @@ def load_dataset(project_root) -> pl.DataFrame:
             (
                 train_data.with_columns([pl.lit(np.nan).alias(col) for col in cols])
                 .with_columns(pl.lit("historical").alias("type"))
-                .select(["date", "station", "y"] + cols),
+                .select(["date", "station", "y", "type"] + cols),
                 statsmodel_valid.with_columns(
                     pl.lit(np.nan).alias("y"), pl.lit("forecast").alias("type")
                 ).select(["date", "station", "y", "type"] + cols),
@@ -67,8 +73,8 @@ def load_dataset(project_root) -> pl.DataFrame:
         output_data = output_data.rename(
             {
                 "HoltWinters": "y_hat",
-                "HoltWinters-lo-95": "lower_bound",
-                "HoltWinters-hi-95": "upper_bound",
+                "HoltWinters-lo-99": "lower_bound",
+                "HoltWinters-hi-99": "upper_bound",
             }
         ).with_columns(
             pl.when(pl.col("y_hat").is_between(pl.col("lower_bound"), pl.col("upper_bound")))

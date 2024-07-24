@@ -180,7 +180,7 @@ if __name__ == "__main__":
             transform_win_size=28,
         )
         # display(test_data)
-        forecaster.fit(data=train_data, strategy=set_strategy, optimize=True, n_trials=50)
+        forecaster.fit(data=train_data, strategy=set_strategy, optimize=True, n_trials=10)
         test_data = (
             deepcopy(test_data)
             .select(["index", date_col, ts_uid])

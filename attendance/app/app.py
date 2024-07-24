@@ -80,7 +80,7 @@ unique_id = st.sidebar.selectbox("Select Unique ID", data["station"].unique())
 
 # Filter data based on selected unique ID
 filtered_data = data.filter(pl.col("station") == unique_id)
-overdue_data = data.filter(pl.col("anomaly") == "anomaly")
+anomaly_data = data.filter(pl.col("anomaly") == "anomaly")
 
 # Header
 st.title("Dashboard")
@@ -118,25 +118,25 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("---")
 
 # Plotting with Matplotlib and Seaborn
-fig, ax = plt.subplots(1, 2, figsize=(18, 4))
+fig, ax = plt.subplots(1, 1, figsize=(18, 4))
 
 # y Report
 historical_data = filtered_data.filter(pl.col("type") == "historical")
 forecast_data = filtered_data.filter(pl.col("type") == "forecast")
 
-ax[0].plot(
+ax.plot(
     historical_data["date"],
     historical_data["y"],
     label="Historical y",
     color="blue",
 )
-ax[0].plot(
+ax.plot(
     forecast_data["date"],
     forecast_data["y_hat"],
     label="Forecast",
     color="orange",
 )
-ax[0].fill_between(
+ax.fill_between(
     forecast_data["date"],
     forecast_data["lower_bound"],
     forecast_data["upper_bound"],
@@ -145,29 +145,32 @@ ax[0].fill_between(
     label="Confidence Interval",
 )
 anomalies = forecast_data.filter(pl.col("anomaly") == "anomaly")
-ax[0].scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies")
-ax[0].set_title("y Report", fontsize=18, fontweight="bold")
-ax[0].set_xlabel("date", fontsize=14)
-ax[0].set_ylabel("y", fontsize=14)
-ax[0].legend(fontsize=12)
-
-# Monthly Usage Stats (Density Plot)
-sns.histplot(filtered_data["y"], kde=True, stat="density", ax=ax[1], color="blue", bins=20)
-mean_y = filtered_data["y"].mean()
-ax[1].axvline(mean_y, color="red", linestyle="--", label=f"Mean: {mean_y:.2f}")
-ax[1].set_title("Monthly Usage Stats", fontsize=18, fontweight="bold")
-ax[1].set_xlabel("y", fontsize=14)
-ax[1].set_ylabel("Density", fontsize=14)
-ax[1].legend(fontsize=12)
+ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies")
+ax.set_title("y Report", fontsize=18, fontweight="bold")
+ax.set_xlabel("date", fontsize=14)
+ax.set_ylabel("y", fontsize=14)
+ax.legend(fontsize=12)
 
 plt.tight_layout()
 st.pyplot(fig)
 
+fig, ax = plt.subplots(1, 1, figsize=(18, 4))
+# Monthly Usage Stats (Density Plot)
+sns.histplot(filtered_data["y"], kde=True, stat="density", ax=ax, color="blue", bins=20)
+mean_y = filtered_data["y"].mean()
+ax.axvline(mean_y, color="red", linestyle="--", label=f"Mean: {mean_y:.2f}")
+ax.set_title("Monthly Usage Stats", fontsize=18, fontweight="bold")
+ax.set_xlabel("y", fontsize=14)
+ax.set_ylabel("Density", fontsize=14)
+ax.legend(fontsize=12)
+st.pyplot(fig)
+
+
 # Table for overdue items
 st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
 st.header("anomaly Report")
-if not overdue_data.empty:
-    st.write(overdue_data)
+if anomaly_data.shape[0] > 0:
+    st.write(anomaly_data)
 else:
     st.write("No overdue items for the selected ID.")
 st.markdown("</div>", unsafe_allow_html=True)

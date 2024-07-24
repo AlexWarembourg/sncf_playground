@@ -78,7 +78,7 @@ if __name__ == "__main__":
             windows_batch_size=win_batch_size,  # Number of windows per batch
             learning_rate=0.003,  # Learning rate
             scaler_type="robust",
-            loss=MAE(),
+            loss=MSE(),
             futr_exog_list=exog,  # Future exogenous variables
             random_seed=SEED,
         ),
@@ -88,7 +88,7 @@ if __name__ == "__main__":
             scaler_type="robust",
             input_size=2 * macro_horizon,
             n_series=n_series,
-            loss=MAE(),
+            loss=MSE(),
             max_steps=n_step,
             early_stop_patience_steps=5,
             random_seed=SEED,
@@ -105,7 +105,7 @@ if __name__ == "__main__":
                 dropout_prob_theta=0.25,
                 n_freq_downsample=[28, 7, 1],
                 scaler_type="robust",
-                loss=MAE(),
+                loss=MSE(),
                 hist_exog_list=exog,  # time based with past known
                 futr_exog_list=exog,  # time based with future known
                 stat_exog_list=[],  # static is rattached at unique id such as one line = one id with static feature set
@@ -115,9 +115,9 @@ if __name__ == "__main__":
                 h=macro_horizon,
                 max_steps=n_step,
                 batch_size=batch_no_serie,
-                n_harmonics=7,
+                n_harmonics=12,
                 scaler_type="robust",
-                loss=MAE(),
+                loss=MSE(),
                 windows_batch_size=win_batch_size,
                 input_size=round(1.5 * macro_horizon),
                 hist_exog_list=exog,  # time based with past known
@@ -129,7 +129,7 @@ if __name__ == "__main__":
                 batch_size=batch_no_serie,
                 scaler_type="robust",
                 input_size=2 * macro_horizon,
-                loss=MAE(),
+                loss=MSE(),
                 max_steps=n_step,
                 early_stop_patience_steps=5,
                 random_seed=SEED,
@@ -141,7 +141,7 @@ if __name__ == "__main__":
                 input_size=2 * macro_horizon,
                 n_series=n_series,
                 max_steps=n_step,
-                loss=MAE(),
+                loss=MSE(),
                 early_stop_patience_steps=5,
                 hist_exog_list=exog,  # time based with past known
                 futr_exog_list=exog,  # time based with future known
