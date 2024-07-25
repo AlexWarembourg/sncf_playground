@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import polars as pl
-import matplotlib.pyplot as plt
-import seaborn as sns
 import sys
 from pathlib import Path
+from datetime import timedelta
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Ensure the project root is in the PYTHONPATH
 project_root = Path(__file__).resolve().parents[2]
@@ -18,7 +19,12 @@ st.set_page_config(layout="wide")
 from attendance.app.utils import load_image, load_dataset
 
 data = load_dataset(project_root)
-print("dataset has been loaded")
+forecast_data = data.filter(pl.col("type") == "forecast")
+number_of_timeseries = int(data["station"].n_unique())
+number_of_total_anomalies = int(forecast_data.filter(pl.col("anomaly") == "anomaly").shape[0])
+number_of_timeseries_in_anomalies = int(
+    forecast_data.filter(pl.col("anomaly") == "anomaly")["station"].n_unique()
+)
 
 # CSS styling for cards with gradient colors and bold numbers
 st.markdown(
@@ -78,101 +84,93 @@ st.sidebar.markdown(
 )
 unique_id = st.sidebar.selectbox("Select Unique ID", data["station"].unique())
 
-# Filter data based on selected unique ID
-filtered_data = data.filter(pl.col("station") == unique_id)
-anomaly_data = data.filter(pl.col("anomaly") == "anomaly")
-
 # Header
 st.title("Dashboard")
 
 # Metrics in cards
 st.markdown('<div class="card-container">', unsafe_allow_html=True)
-col1, col2, col3, col4, col5 = st.columns(5)
+col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown(
-        '<div class="card"><div class="card-title">New Orders</div><div class="card-metric">12</div></div>',
+        f'<div class="card"><div class="card-title">Monitored</div><div class="card-metric">{number_of_timeseries}</div></div>',
         unsafe_allow_html=True,
     )
 with col2:
     st.markdown(
-        '<div class="card"><div class="card-title">In Progress</div><div class="card-metric">4</div></div>',
+        f'<div class="card"><div class="card-title">Number of day in Anomaly</div><div class="card-metric">{number_of_total_anomalies}</div></div>',
         unsafe_allow_html=True,
     )
 with col3:
     st.markdown(
-        '<div class="card"><div class="card-title">Pending Reviews</div><div class="card-metric">8</div></div>',
+        f'<div class="card"><div class="card-title">Number of Station in Anomaly</div><div class="card-metric">{number_of_timeseries_in_anomalies}</div></div>',
         unsafe_allow_html=True,
     )
-with col4:
-    st.markdown(
-        '<div class="card"><div class="card-title">Overdue</div><div class="card-metric">3</div></div>',
-        unsafe_allow_html=True,
-    )
-with col5:
-    st.markdown(
-        '<div class="card"><div class="card-title">Tickets Resolved</div><div class="card-metric">5</div></div>',
-        unsafe_allow_html=True,
-    )
+
 st.markdown("</div>", unsafe_allow_html=True)
+st.markdown("---")
+
+
+# ==========================================================
+st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
+st.header("anomaly Report")
+anomaly_data = data.filter((pl.col("anomaly") == "anomaly") & (pl.col("type") != "historical"))
+if anomaly_data.shape[0] > 0:
+    st.write(anomaly_data)
+else:
+    st.write("No overdue items for the selected ID.")
+st.markdown("</div>", unsafe_allow_html=True)
+# ==========================================================
 
 st.markdown("---")
 
-# Plotting with Matplotlib and Seaborn
-fig, ax = plt.subplots(1, 1, figsize=(18, 4))
-
-# y Report
+# Filter data based on selected unique ID
+filtered_data = data.filter(pl.col("station") == unique_id)
 historical_data = filtered_data.filter(pl.col("type") == "historical")
+length_ts = historical_data.shape[0]
+show_n = 120 if length_ts > 120 else length_ts
+historical_data = historical_data.filter(
+    pl.col("date").cast(pl.String).str.to_datetime()
+    >= pl.col("date").cast(pl.String).str.to_datetime().max() - timedelta(days=show_n)
+)
 forecast_data = filtered_data.filter(pl.col("type") == "forecast")
 
+# Create a figure and axis
+fig, ax = plt.subplots(1, 1, figsize=(18, 6))
+# Plot historical data
 ax.plot(
     historical_data["date"],
     historical_data["y"],
     label="Historical y",
-    color="blue",
+    color="royalblue",
+    linewidth=2,
 )
+# Plot forecast data
 ax.plot(
     forecast_data["date"],
     forecast_data["y_hat"],
     label="Forecast",
-    color="orange",
+    color="green",
+    marker="x",
+    linewidth=2,
 )
 ax.fill_between(
     forecast_data["date"],
     forecast_data["lower_bound"],
     forecast_data["upper_bound"],
     color="red",
-    alpha=0.5,
+    alpha=0.3,
     label="Confidence Interval",
 )
+
+# Plot anomalies
 anomalies = forecast_data.filter(pl.col("anomaly") == "anomaly")
-ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies")
-ax.set_title("y Report", fontsize=18, fontweight="bold")
-ax.set_xlabel("date", fontsize=14)
-ax.set_ylabel("y", fontsize=14)
-ax.legend(fontsize=12)
+ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=50, label="Anomalies", zorder=5)
 
-plt.tight_layout()
-st.pyplot(fig)
+# Customize the plot
+ax.set_title("Forecast Monitoring", fontsize=20, fontweight="bold")
+ax.set_xlabel("Date", fontsize=16)
+ax.set_ylabel("y", fontsize=16)
+ax.legend(fontsize=14)
+st.pyplot(fig, use_container_width=True)
 
-fig, ax = plt.subplots(1, 1, figsize=(18, 4))
-# Monthly Usage Stats (Density Plot)
-sns.histplot(filtered_data["y"], kde=True, stat="density", ax=ax, color="blue", bins=20)
-mean_y = filtered_data["y"].mean()
-ax.axvline(mean_y, color="red", linestyle="--", label=f"Mean: {mean_y:.2f}")
-ax.set_title("Monthly Usage Stats", fontsize=18, fontweight="bold")
-ax.set_xlabel("y", fontsize=14)
-ax.set_ylabel("Density", fontsize=14)
-ax.legend(fontsize=12)
-st.pyplot(fig)
-
-
-# Table for overdue items
-st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
-st.header("anomaly Report")
-if anomaly_data.shape[0] > 0:
-    st.write(anomaly_data)
-else:
-    st.write("No overdue items for the selected ID.")
-st.markdown("</div>", unsafe_allow_html=True)
-# Footer
 st.markdown("---")

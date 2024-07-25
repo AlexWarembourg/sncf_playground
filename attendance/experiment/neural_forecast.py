@@ -124,16 +124,6 @@ if __name__ == "__main__":
                 futr_exog_list=exog,  # time based with future known
                 random_seed=SEED,
             ),
-            PatchTST(
-                h=macro_horizon,
-                batch_size=batch_no_serie,
-                scaler_type="robust",
-                input_size=2 * macro_horizon,
-                loss=MSE(),
-                max_steps=n_step,
-                early_stop_patience_steps=5,
-                random_seed=SEED,
-            ),
             TSMixerx(
                 h=macro_horizon,
                 batch_size=batch_no_serie,
