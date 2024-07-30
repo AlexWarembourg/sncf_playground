@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import timedelta
 import matplotlib.pyplot as plt
 import seaborn as sns
+from matplotlib.dates import AutoDateFormatter, AutoDateLocator
 
 # Ensure the project root is in the PYTHONPATH
 project_root = Path(__file__).resolve().parents[2]
@@ -165,12 +166,15 @@ ax.fill_between(
 # Plot anomalies
 anomalies = forecast_data.filter(pl.col("anomaly") == "anomaly")
 ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=50, label="Anomalies", zorder=5)
-
 # Customize the plot
 ax.set_title("Forecast Monitoring", fontsize=20, fontweight="bold")
 ax.set_xlabel("Date", fontsize=16)
 ax.set_ylabel("y", fontsize=16)
 ax.legend(fontsize=14)
+ax.xaxis(historical_data["date"].to_numpy()[::-14])
+locator = AutoDateLocator()
+ax.xaxis.set_major_formatter(AutoDateFormatter(locator=locator))
+fig.autofmt_xdate()
 st.pyplot(fig, use_container_width=True)
 
 st.markdown("---")

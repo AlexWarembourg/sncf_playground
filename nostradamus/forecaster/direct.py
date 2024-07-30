@@ -359,7 +359,6 @@ class DirectForecaster:
     def predict(self, x_test: Union[polars_dataframe, pandas_dataframe] = None):
         if x_test is None:
             x_test = self.make_future_dataframe()
-            # reconstruct dataset
             x_test = pl.concat(
                 (
                     self.train.select(x_test.columns),
@@ -456,5 +455,14 @@ class DirectForecaster:
         else:
             raise ValueError("Model is not fitted.")
 
-    def backtest(self, data):
+    def backtest(self):
         pass
+
+    def conformalised(self, train_data, strategy, optimize, n_trials, alpha=0.95):
+        estimators: List[object] = []
+        for alpha_ in [alpha / 2, (1 - (alpha / 2)), 0.5]:
+            m = deepcopy(self.model.params)
+            m["objective"] = "quantile"
+            m["alpha"] = alpha_
+            m = m.fit(train_data, strategy=strategy, optimize=optimize, n_trials=n_trials)
+            estimators.append(m)
