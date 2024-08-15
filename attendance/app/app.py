@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.dates import AutoDateFormatter, AutoDateLocator
 
+
 # Ensure the project root is in the PYTHONPATH
 project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
@@ -22,9 +23,9 @@ from attendance.app.utils import load_image, load_dataset
 data = load_dataset(project_root)
 forecast_data = data.filter(pl.col("type") == "forecast")
 number_of_timeseries = int(data["station"].n_unique())
-number_of_total_anomalies = int(forecast_data.filter(pl.col("anomaly") == "anomaly").shape[0])
+number_of_total_anomalies = int(forecast_data.filter(pl.col("state") == "anomaly").shape[0])
 number_of_timeseries_in_anomalies = int(
-    forecast_data.filter(pl.col("anomaly") == "anomaly")["station"].n_unique()
+    forecast_data.filter(pl.col("state") == "anomaly")["station"].n_unique()
 )
 
 # CSS styling for cards with gradient colors and bold numbers
@@ -76,7 +77,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # Sidebar content
 st.sidebar.image(load_image("logo.png"), use_column_width=True)  # Add your logo file
 st.sidebar.markdown("## Webapp Goal")
@@ -108,35 +108,38 @@ with col3:
     )
 
 st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("---")
-
 
 # ==========================================================
 st.markdown('<div class="card overdue-table">', unsafe_allow_html=True)
 st.header("anomaly Report")
-anomaly_data = data.filter((pl.col("anomaly") == "anomaly") & (pl.col("type") != "historical"))
+anomaly_data = data.filter((pl.col("state") == "anomaly") & (pl.col("type") != "historical"))
 if anomaly_data.shape[0] > 0:
-    st.write(anomaly_data)
+    st.write(anomaly_data.to_pandas())
 else:
     st.write("No overdue items for the selected ID.")
 st.markdown("</div>", unsafe_allow_html=True)
 # ==========================================================
 
 st.markdown("---")
-
 # Filter data based on selected unique ID
 filtered_data = data.filter(pl.col("station") == unique_id)
-historical_data = filtered_data.filter(pl.col("type") == "historical")
+historical_data = filtered_data.filter(pl.col("type") == "historical").with_columns(
+    pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+)
 length_ts = historical_data.shape[0]
 show_n = 120 if length_ts > 120 else length_ts
 historical_data = historical_data.filter(
     pl.col("date").cast(pl.String).str.to_datetime()
     >= pl.col("date").cast(pl.String).str.to_datetime().max() - timedelta(days=show_n)
 )
-forecast_data = filtered_data.filter(pl.col("type") == "forecast")
+forecast_data = filtered_data.filter(pl.col("type") == "forecast").with_columns(
+    pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+)
+
+import matplotlib.animation as animation
 
 # Create a figure and axis
-fig, ax = plt.subplots(1, 1, figsize=(18, 6))
+fig, ax = plt.subplots(1, 1, figsize=(16, 6))
 # Plot historical data
 ax.plot(
     historical_data["date"],
@@ -154,27 +157,45 @@ ax.plot(
     marker="x",
     linewidth=2,
 )
+ax.plot(
+    forecast_data["date"],
+    forecast_data["y"],
+    label="outcome",
+    color="purple",
+    marker="o",
+    linewidth=2,
+)
 ax.fill_between(
     forecast_data["date"],
     forecast_data["lower_bound"],
     forecast_data["upper_bound"],
-    color="red",
+    color="grey",
     alpha=0.3,
     label="Confidence Interval",
 )
 
 # Plot anomalies
-anomalies = forecast_data.filter(pl.col("anomaly") == "anomaly")
-ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=50, label="Anomalies", zorder=5)
-# Customize the plot
+anomalies = forecast_data.filter(pl.col("state") == "anomaly").with_columns(
+    pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+)
+ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies", zorder=5)
 ax.set_title("Forecast Monitoring", fontsize=20, fontweight="bold")
 ax.set_xlabel("Date", fontsize=16)
 ax.set_ylabel("y", fontsize=16)
 ax.legend(fontsize=14)
-ax.xaxis(historical_data["date"].to_numpy()[::-14])
-locator = AutoDateLocator()
-ax.xaxis.set_major_formatter(AutoDateFormatter(locator=locator))
-fig.autofmt_xdate()
-st.pyplot(fig, use_container_width=True)
 
+ax.set_xticks(
+    np.sort(
+        np.concatenate(
+            (
+                historical_data["date"].unique(),
+                forecast_data["date"].unique(),
+            ),
+            0,
+        )
+    )[::28]
+)
+ax.tick_params(axis="x", rotation=45)
+
+st.pyplot(fig, use_container_width=True)
 st.markdown("---")

@@ -232,6 +232,52 @@ class GBTModel:
             bounds_params=None,
         )
 
+    def online(
+        self,
+        train_x: pd.DataFrame,
+        train_y: Union[pd.DataFrame, pd.Series, np.ndarray],
+        valid_x: pd.DataFrame,
+        valid_y: Union[pd.DataFrame, pd.Series, np.ndarray],
+        return_object: bool = False,
+    ) -> None:
+
+        if not self.lgb_model:
+            tmp_model = self.train(
+                train_x=train_x,
+                train_y=train_y,
+                valid_x=valid_x,
+                valid_y=valid_y,
+                return_object=return_object,
+                tune=False,
+                bounds_params=None,
+            )
+            GBTModel.save(tmp_model, path="", name="tmp")
+
+        for bound_in, bound_out in ExpandingWindow(dates):
+            tmp_model = lgb.train(
+                params=self.params,
+                train_set=self.pooling(
+                    x=self.is_an_array(train_x[self.features]),
+                    y=self.is_an_array(train_y).ravel(),
+                    weight=(
+                        self.is_an_array(train_x[self.weight]) if self.weight is not None else None
+                    ),
+                ),
+                valid_sets=self.pooling(
+                    x=valid_x[self.features],
+                    y=self.is_an_array(valid_y).ravel(),
+                    weight=(
+                        self.is_an_array(valid_x[self.weight]) if self.weight is not None else None
+                    ),
+                ),
+                feature_name=self.features,
+                num_boost_round=self.num_ite,
+                callbacks=[lgb.early_stopping(stopping_rounds=self.early_stopping_value)],
+                init_model=self.lgb_model,
+                keep_training_booster=True,
+            )
+            GBTModel.save(tmp_model, path="", name="tmp")
+
     def train(
         self,
         train_x: pd.DataFrame,
@@ -296,7 +342,8 @@ class GBTModel:
         """
         return self.lgb_model.predict(self.is_an_array(x_test[self.features]))
 
-    def save(self, path: str, name: str) -> None:
+    @staticmethod
+    def save(lgb_model, path: str, name: str) -> None:
         """_summary_
 
         Args:
@@ -304,4 +351,4 @@ class GBTModel:
             name (str): _description_
         """
         with open(f"{path}/{name}.pickle", "wb") as f:
-            pickle.dump(self.lgb_model, f)
+            pickle.dump(lgb_model, f)

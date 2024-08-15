@@ -367,6 +367,7 @@ class DirectForecaster:
                 ),
                 how="vertical",
             )
+
         shape = x_test[self.date_str].n_unique()
         assert (
             shape >= self.initial_trim

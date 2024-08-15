@@ -1729,6 +1729,23 @@ lingua = ["lingua"]
 testing = ["pytest"]
 
 [[package]]
+name = "mapie"
+version = "0.8.6"
+description = "A scikit-learn-compatible module for estimating prediction intervals."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "MAPIE-0.8.6-py3-none-any.whl", hash = "sha256:81cc6bf8d337f61699aec17affba0b327ba3e8a82b048e499557d199563dd08a"},
+    {file = "MAPIE-0.8.6.tar.gz", hash = "sha256:4ab92303071ca3a3a794edb6083381372d6d4dded61913c6f2690e2a25937404"},
+]
+
+[package.dependencies]
+numpy = ">=1.21"
+packaging = "*"
+scikit-learn = "*"
+scipy = "*"
+
+[[package]]
 name = "markdown-it-py"
 version = "3.0.0"
 description = "Python port of markdown-it. Markdown parsing, done right!"
@@ -4945,4 +4962,4 @@ multidict = ">=4.0"
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.11,<3.13"
-content-hash = "7983b3f56acc8c1f42954a923086da6cb4032dc4767d78948acff538494e03d8"
+content-hash = "0acec8a09c5e65a62790c57471e2ed3526ff250b56c6a86967ecd98b33a10a97"

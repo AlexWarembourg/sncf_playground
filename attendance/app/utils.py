@@ -22,7 +22,7 @@ def get_project_root() -> str:
     str
         Project root path.
     """
-    return str(Path(__file__).parent.parent.parent)
+    return str(Path(__file__).resolve().parents[2])
 
 
 @st.cache_data
@@ -49,14 +49,10 @@ def load_dataset(project_root) -> pl.DataFrame:
             >= pl.col("date").cast(pl.Date).min() + timedelta(days=364 * 2)
         )
 
-        cols = ["HoltWinters", "HoltWinters-lo-99", "HoltWinters-hi-99"]
-        statsmodel_valid = (
-            pl.read_csv(
-                project_root / "out/nixtla_validation.csv", separator=",", infer_schema_length=1000
-            )
-            .rename({"unique_id": "station", "ds": "date"})
-            .select(["date", "station"] + cols)
-        )
+        cols = ["y_hat", "lower_band", "upper_band"]
+        statsmodel_valid = pl.read_csv(
+            project_root / "out/cqr_lgb.csv", infer_schema_length=1000
+        ).select(["date", "station"] + cols)
         output_data = pl.concat(
             (
                 train_data.with_columns([pl.lit(np.nan).alias(col) for col in cols])
@@ -72,15 +68,14 @@ def load_dataset(project_root) -> pl.DataFrame:
         gc.collect()
         output_data = output_data.rename(
             {
-                "HoltWinters": "y_hat",
-                "HoltWinters-lo-99": "lower_bound",
-                "HoltWinters-hi-99": "upper_bound",
+                "lower_band": "lower_bound",
+                "upper_band": "upper_bound",
             }
         ).with_columns(
             pl.when(pl.col("y_hat").is_between(pl.col("lower_bound"), pl.col("upper_bound")))
             .then(pl.lit("normal"))
             .otherwise(pl.lit("anomaly"))
-            .alias("anomaly")
+            .alias("state")
         )
         return output_data
     except:
@@ -134,4 +129,4 @@ def load_image(image_name: str) -> Image:
     Image
         Image to be displayed.
     """
-    return Image.open(Path(get_project_root()) / f"attendance/app/assets/{image_name}")
+    return Image.open(f"attendance/app/assets/{image_name}")

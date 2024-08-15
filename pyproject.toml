@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "nostradamus"
 version = "1.0.0"
-description = "This is lightweight global forecasting package"
+description = "This is a light-weight global forecasting package"
 authors = ["Alexandre Warembourg : <alexandrewarembourg59810@gmail.com>"]
 readme = "README.md"
 license = "MIT"
@@ -37,6 +37,7 @@ scikit-learn = "^1.5.1"
 pygam = "^0.9.1"
 holidays = "^0.53"
 neuralforecast = "^1.7.3"
+mapie = "^0.8.6"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "^6.29.4"
