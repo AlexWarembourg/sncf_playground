@@ -76,12 +76,7 @@ if __name__ == "__main__":
             how="left",
             on=[date_col],
         )
-        # sncf strike | 2019-12-01 to 2021-11-01
-        .filter(
-            (pl.col(date_col) >= in_dt)
-            & (pl.col(date_col) != pl.datetime(2019, 12, 1))
-            & (pl.col(date_col) != pl.datetime(2021, 11, 1))
-        )
+        .filter((pl.col(date_col) >= in_dt))
     )
 
     # add exponentiel time weight over covid weight
@@ -92,7 +87,7 @@ if __name__ == "__main__":
         ).alias("covid_weight")
     )
 
-    good_ts = minimum_length_uid(train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.2))
+    good_ts = minimum_length_uid(train_data, uid=ts_uid, time=date_col, min_length=round(364 * 1.1))
     train_data = train_data.filter(pl.col(ts_uid).is_in(good_ts))
 
     # test data is a subset of train for dashboarding purpose
@@ -122,7 +117,7 @@ if __name__ == "__main__":
         features=None,
         weight=None,
         categorical_features=[],
-        alpha=0.01,
+        alpha=0.05,
     )
 
     lags = deepcopy(significant_lags)
@@ -152,7 +147,7 @@ if __name__ == "__main__":
         features_params=autoreg_dict,
         n_jobs=-1,
         transform_strategy=transform_strategy,
-        transform_win_size=28,
+        transform_win_size=90,
     )
 
     # fit model through the wrapper
@@ -165,7 +160,7 @@ if __name__ == "__main__":
         valid_x=val.select(dir_forecaster.features),
         valid_y=val.select(y),
         tune=True,
-        n_trials=35,
+        n_trials=50,
         return_object=True,
     )
 
@@ -205,9 +200,13 @@ if __name__ == "__main__":
     )
     median_forecast, bands = model_reg.predict(x_test)
     display(bands)
-    x_test = x_test.with_columns(
-        pl.lit(median_forecast).alias("y_hat"),
-        pl.lit(bands[:, 0].flatten().ravel()).alias("lower_band"),
-        pl.lit(bands[:, 1].flatten().ravel()).alias("upper_band"),
+    x_test = (
+        x_test.with_columns(
+            pl.lit(median_forecast).alias("y_hat"),
+            pl.lit(bands[:, 0].flatten().ravel()).alias("lower_band"),
+            pl.lit(bands[:, 1].flatten().ravel()).alias("upper_band"),
+        )
+        .with_columns(pl.col("lower_band").clip_min(0))
+        .with_columns(pl.col("upper_band").clip_min(pl.col("lower_band")))
     )
     x_test.write_csv(r"C:\Users\N000193384\Documents\sncf_project\sncf_playground\out\cqr_lgb.csv")

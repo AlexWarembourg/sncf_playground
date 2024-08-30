@@ -20,7 +20,8 @@ st.set_page_config(layout="wide")
 
 from attendance.app.utils import load_image, load_dataset
 
-data = load_dataset(project_root)
+# cache only works with pandas
+data = pl.from_dataframe(load_dataset(project_root))
 forecast_data = data.filter(pl.col("type") == "forecast")
 number_of_timeseries = int(data["station"].n_unique())
 number_of_total_anomalies = int(forecast_data.filter(pl.col("state") == "anomaly").shape[0])
@@ -123,6 +124,7 @@ st.markdown("</div>", unsafe_allow_html=True)
 st.markdown("---")
 # Filter data based on selected unique ID
 filtered_data = data.filter(pl.col("station") == unique_id)
+
 historical_data = filtered_data.filter(pl.col("type") == "historical").with_columns(
     pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
 )
@@ -131,12 +133,15 @@ show_n = 120 if length_ts > 120 else length_ts
 historical_data = historical_data.filter(
     pl.col("date").cast(pl.String).str.to_datetime()
     >= pl.col("date").cast(pl.String).str.to_datetime().max() - timedelta(days=show_n)
-)
-forecast_data = filtered_data.filter(pl.col("type") == "forecast").with_columns(
-    pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
-)
+).sort(by=["station", "date"])
 
-import matplotlib.animation as animation
+forecast_data = (
+    filtered_data.filter(pl.col("type") == "forecast")
+    .with_columns(
+        pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+    )
+    .sort(by=["station", "date"])
+)
 
 # Create a figure and axis
 fig, ax = plt.subplots(1, 1, figsize=(16, 6))
@@ -159,9 +164,9 @@ ax.plot(
 )
 ax.plot(
     forecast_data["date"],
-    forecast_data["y"],
-    label="outcome",
-    color="purple",
+    forecast_data["true_y"],
+    label="true_y",
+    color="orange",
     marker="o",
     linewidth=2,
 )
@@ -175,10 +180,15 @@ ax.fill_between(
 )
 
 # Plot anomalies
-anomalies = forecast_data.filter(pl.col("state") == "anomaly").with_columns(
-    pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+anomalies = (
+    forecast_data.filter(pl.col("state") == "anomaly")
+    .with_columns(
+        pl.col("date").cast(pl.String).str.to_datetime().dt.strftime("%Y-%m-%d").alias("date")
+    )
+    .sort(by=["station", "date"])
 )
-ax.scatter(anomalies["date"], anomalies["y_hat"], color="red", s=100, label="Anomalies", zorder=5)
+
+ax.scatter(anomalies["date"], anomalies["true_y"], color="red", s=100, label="Anomalies", zorder=5)
 ax.set_title("Forecast Monitoring", fontsize=20, fontweight="bold")
 ax.set_xlabel("Date", fontsize=16)
 ax.set_ylabel("y", fontsize=16)

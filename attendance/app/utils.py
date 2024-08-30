@@ -53,31 +53,59 @@ def load_dataset(project_root) -> pl.DataFrame:
         statsmodel_valid = pl.read_csv(
             project_root / "out/cqr_lgb.csv", infer_schema_length=1000
         ).select(["date", "station"] + cols)
-        output_data = pl.concat(
-            (
-                train_data.with_columns([pl.lit(np.nan).alias(col) for col in cols])
-                .with_columns(pl.lit("historical").alias("type"))
-                .select(["date", "station", "y", "type"] + cols),
-                statsmodel_valid.with_columns(
-                    pl.lit(np.nan).alias("y"), pl.lit("forecast").alias("type")
-                ).select(["date", "station", "y", "type"] + cols),
-            ),
-            how="vertical_relaxed",
+
+        true_y = (
+            train_data.filter(
+                pl.col("date").cast(pl.String).str.to_datetime()
+                > pl.col("date").cast(pl.String).str.to_datetime().max() - timedelta(days=60)
+            )
+            .select(["station", "date", "y"])
+            .rename({"y": "true_y"})
         )
+
+        output_data = (
+            pl.concat(
+                (
+                    train_data.filter(
+                        pl.col("date").cast(pl.String).str.to_datetime()
+                        < pl.col("date").cast(pl.String).str.to_datetime().max()
+                        - timedelta(days=60)
+                    )
+                    .with_columns([pl.lit(np.nan).alias(col) for col in cols])
+                    .with_columns(pl.lit("historical").alias("type"))
+                    .select(["date", "station", "y", "type"] + cols),
+                    statsmodel_valid.with_columns(
+                        pl.lit(np.nan).alias("y"), pl.lit("forecast").alias("type")
+                    ).select(["date", "station", "y", "type"] + cols),
+                ),
+                how="vertical_relaxed",
+            )
+            .with_columns(pl.col("date").cast(pl.String).str.to_datetime())
+            .join(true_y, how="left", on=["station", "date"])
+        )
+
         del train_data, statsmodel_valid
         gc.collect()
-        output_data = output_data.rename(
-            {
-                "lower_band": "lower_bound",
-                "upper_band": "upper_bound",
-            }
-        ).with_columns(
-            pl.when(pl.col("y_hat").is_between(pl.col("lower_bound"), pl.col("upper_bound")))
-            .then(pl.lit("normal"))
-            .otherwise(pl.lit("anomaly"))
-            .alias("state")
+        output_data = (
+            output_data.rename(
+                {
+                    "lower_band": "lower_bound",
+                    "upper_band": "upper_bound",
+                }
+            )
+            .with_columns(pl.col("lower_bound").clip_min(pl.lit(0)))
+            .with_columns(pl.col("upper_bound").clip_min(pl.col("lower_bound")))
+            .with_columns(
+                pl.when(
+                    (pl.col("true_y").is_between(pl.col("lower_bound"), pl.col("upper_bound")))
+                    & (pl.col("type") == "forecast")
+                )
+                .then(pl.lit("normal"))
+                .otherwise(pl.lit("anomaly"))
+                .alias("state")
+            )
         )
-        return output_data
+        return output_data.to_pandas()
     except:
         st.error(
             "This file can't be converted into a dataframe. Please import a csv file with a valid separator."
@@ -129,4 +157,4 @@ def load_image(image_name: str) -> Image:
     Image
         Image to be displayed.
     """
-    return Image.open(f"attendance/app/assets/{image_name}")
+    return Image.open(f"app/assets/{image_name}")
